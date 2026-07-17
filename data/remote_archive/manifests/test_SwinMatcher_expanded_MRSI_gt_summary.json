@@ -1,0 +1,13 @@
+{
+  "collection": "expanded_MRSI_dataset",
+  "records": 600,
+  "skipped": 0,
+  "by_modality_pair": {
+    "optical-depth": 100,
+    "optical-infrared": 100,
+    "optical-map": 100,
+    "optical-optical": 100,
+    "optical-sar": 100,
+    "optical_day-optical_night": 100
+  }
+}

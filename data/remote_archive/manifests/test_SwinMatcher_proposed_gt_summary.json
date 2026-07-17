@@ -1,0 +1,11 @@
+{
+  "collection": "proposed_test_dataset",
+  "records": 400,
+  "skipped": 0,
+  "by_modality_pair": {
+    "optical-lidar": 50,
+    "optical-map": 100,
+    "optical-sar": 70,
+    "sar-lidar": 180
+  }
+}

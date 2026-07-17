@@ -1,0 +1,59 @@
+{
+  "protocol": {
+    "NCM": "mean correct matches per pair, reprojection error <= 5.0px in original image coordinates",
+    "Pre": "mean of per-pair NCM / produced matches",
+    "SR": "fraction of pairs with NCM >= 20",
+    "RMSE": "correct-match RMSE for successful pairs; 10.0 for failed pairs",
+    "filtering": "ground-truth label only; no RANSAC"
+  },
+  "manifest_path": "data/remote_archive/manifests/test_SwinMatcher_proposed_gt.jsonl",
+  "ckpt_path": "ckpt/megadepth_19epochs.ckpt",
+  "image_size": 512,
+  "overall": {
+    "num_pairs": 400,
+    "NCM": 1335.0825,
+    "Pre": 0.34459881990360147,
+    "SR": 0.96,
+    "RMSE": 2.812813620157043,
+    "mean_matches": 3391.805,
+    "mean_runtime_ms": 69.33478392060351
+  },
+  "by_modality_pair": {
+    "optical-lidar": {
+      "num_pairs": 50,
+      "NCM": 870.08,
+      "Pre": 0.2610477623148674,
+      "SR": 0.94,
+      "RMSE": 2.9143271402946858,
+      "mean_matches": 2951.32,
+      "mean_runtime_ms": 64.14887629973236
+    },
+    "optical-map": {
+      "num_pairs": 100,
+      "NCM": 434.02,
+      "Pre": 0.15241344028757295,
+      "SR": 0.9,
+      "RMSE": 3.6728541215716213,
+      "mean_matches": 2489.68,
+      "mean_runtime_ms": 64.48477962097968
+    },
+    "optical-sar": {
+      "num_pairs": 70,
+      "NCM": 1621.9,
+      "Pre": 0.36724482238414563,
+      "SR": 0.9857142857142858,
+      "RMSE": 2.6068578142638015,
+      "mean_matches": 4056.1428571428573,
+      "mean_runtime_ms": 73.96968662942527
+    },
+    "sar-lidar": {
+      "num_pairs": 180,
+      "NCM": 1853.3,
+      "Pre": 0.46577032361138726,
+      "SR": 0.9888888888888889,
+      "RMSE": 2.386909066069194,
+      "mean_matches": 3756.988888888889,
+      "mean_runtime_ms": 71.6672984838725
+    }
+  }
+}

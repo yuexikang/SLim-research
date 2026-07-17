@@ -1,0 +1,77 @@
+{
+  "protocol": {
+    "NCM": "mean correct matches per pair, reprojection error <= 5.0px in original image coordinates",
+    "Pre": "mean of per-pair NCM / produced matches",
+    "SR": "fraction of pairs with NCM >= 20",
+    "RMSE": "correct-match RMSE for successful pairs; 10.0 for failed pairs",
+    "filtering": "ground-truth label only; no RANSAC"
+  },
+  "manifest_path": "data/remote_archive/manifests/test_SwinMatcher_expanded_MRSI_gt.jsonl",
+  "ckpt_path": "ckpt/megadepth_19epochs.ckpt",
+  "image_size": 512,
+  "overall": {
+    "num_pairs": 600,
+    "NCM": 1428.2133333333334,
+    "Pre": 0.36180910108224407,
+    "SR": 0.9516666666666667,
+    "RMSE": 2.86488777994785,
+    "mean_matches": 3669.076666666667,
+    "mean_runtime_ms": 66.86685359692395
+  },
+  "by_modality_pair": {
+    "optical-depth": {
+      "num_pairs": 100,
+      "NCM": 1562.99,
+      "Pre": 0.37010911622361803,
+      "SR": 0.95,
+      "RMSE": 3.009312694801402,
+      "mean_matches": 3805.02,
+      "mean_runtime_ms": 64.61210137029411
+    },
+    "optical-infrared": {
+      "num_pairs": 100,
+      "NCM": 1342.92,
+      "Pre": 0.33881369686732543,
+      "SR": 0.98,
+      "RMSE": 2.7179269174331036,
+      "mean_matches": 4021.89,
+      "mean_runtime_ms": 63.840181520208716
+    },
+    "optical-map": {
+      "num_pairs": 100,
+      "NCM": 1259.92,
+      "Pre": 0.4405549281203209,
+      "SR": 0.86,
+      "RMSE": 3.3352117371079317,
+      "mean_matches": 2338.5,
+      "mean_runtime_ms": 71.11382174029131
+    },
+    "optical-optical": {
+      "num_pairs": 100,
+      "NCM": 2221.12,
+      "Pre": 0.49343670695180064,
+      "SR": 1.0,
+      "RMSE": 2.179804065223764,
+      "mean_matches": 4312.97,
+      "mean_runtime_ms": 78.87732342031086
+    },
+    "optical-sar": {
+      "num_pairs": 100,
+      "NCM": 686.8,
+      "Pre": 0.17491703693816776,
+      "SR": 0.95,
+      "RMSE": 3.306010010779368,
+      "mean_matches": 3722.64,
+      "mean_runtime_ms": 63.83531444007531
+    },
+    "optical_day-optical_night": {
+      "num_pairs": 100,
+      "NCM": 1495.53,
+      "Pre": 0.3530231213922317,
+      "SR": 0.97,
+      "RMSE": 2.6410612543415293,
+      "mean_matches": 3813.44,
+      "mean_runtime_ms": 58.92237909036339
+    }
+  }
+}
