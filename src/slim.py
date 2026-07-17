@@ -246,14 +246,16 @@ class SLiM(nn.Module):
                 mask0=mask0,
                 mask1=mask1,
             )  # (B x HW x HW)
-            # self._get_coarse_coord_test(data=data)  # Get coord from sim matrix
-            self._coarse_match_norm_clue(
-                data=data,
-                feat0_c=coarse_x0,
-                feat1_c=coarse_x1,
-                mask0=mask0,
-                mask1=mask1,
-            )
+            if data.get("use_full_coarse_matching", True):
+                self._get_coarse_coord_test(data=data)  # Get coord from full sim matrix
+            else:
+                self._coarse_match_norm_clue(
+                    data=data,
+                    feat0_c=coarse_x0,
+                    feat1_c=coarse_x1,
+                    mask0=mask0,
+                    mask1=mask1,
+                )
         coarse_match_time = timer.elapsed_time / data["batch_size"]
 
         # 4. Fine matching
@@ -507,8 +509,8 @@ class SLiM(nn.Module):
         j_idx_c = []
         for b in range(B):
             # 4. Get candidate match for correlation
-            candidate_i = torch.where(norm0[b] > norm0[b].max() * 0.65)[0]
-            candidate_j = torch.where(norm1[b] > norm1[b].max() * 0.65)[0]
+            candidate_i = torch.where(norm0[b] > norm0[b].max() * 0.4)[0]
+            candidate_j = torch.where(norm1[b] > norm1[b].max() * 0.4)[0]
             # candidate_i = torch.where(norm0[b] < norm0[b].max() * 0.6)[0]
             # candidate_j = torch.where(norm1[b] < norm1[b].max() * 0.6)[0]
             min_len = min(candidate_i.shape[0], candidate_j.shape[0])
@@ -788,12 +790,12 @@ class SLiM(nn.Module):
         del conf_matrix  # Free memory
 
         absolute_fine_scale0 = (
-            absolute_fine_scale0[b_idx_it]
+            absolute_fine_scale0[m_idx_it]
             if isinstance(absolute_fine_scale0, torch.Tensor)
             else absolute_fine_scale0
         )
         absolute_fine_scale1 = (
-            absolute_fine_scale1[b_idx_it]
+            absolute_fine_scale1[m_idx_it]
             if isinstance(absolute_fine_scale1, torch.Tensor)
             else absolute_fine_scale1
         )
@@ -957,11 +959,17 @@ class SLiM(nn.Module):
 
         row_indices = row_indices.unsqueeze(1) + row_offsets.unsqueeze(0)
         col_indices = col_indices.unsqueeze(1) + col_offsets.unsqueeze(0)
+        row_valid = (row_indices >= 0) & (row_indices < _feat.shape[2])
+        col_valid = (col_indices >= 0) & (col_indices < _feat.shape[3])
+        valid = row_valid[:, :, None] & col_valid[:, None, :]
+        row_indices = row_indices.clamp(0, _feat.shape[2] - 1)
+        col_indices = col_indices.clamp(0, _feat.shape[3] - 1)
 
         # Extract windows using advanced indexing
         windows = _feat[
             b_idx[:, None, None], :, row_indices[:, :, None], col_indices[:, None, :]
         ]
+        windows = windows * valid.unsqueeze(-1).to(windows.dtype)
 
         # Rearrange to [M x C x H x W]
         windows = windows.permute(0, 3, 1, 2)

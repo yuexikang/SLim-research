@@ -1,4 +1,5 @@
 import os.path as osp
+import numpy as np
 from tqdm import tqdm
 from yacs.config import CfgNode as CN
 from torch.utils.data import (
@@ -10,6 +11,7 @@ from torch.utils.data import (
 import pytorch_lightning as pl
 from .megadepth import MegaDepthDataset
 from .scannet import ScanNetDataset
+from .remote_sensing import RemoteSensingHomographyDataset
 from .sampler import RandomConcatSampler
 from utils.augment import get_augmentor_builder
 
@@ -29,14 +31,33 @@ class SLiM_Dataset(pl.LightningDataModule):
             self.data_source = self.train_data_source = (
                 config.DATASET.TRAINVAL_DATA_SOURCE
             )
-            self.train_data_root = config.DATASET.TRAIN_DATA_ROOT
-            self.train_npz_dir = config.DATASET.TRAIN_NPZ_ROOT
-            self.train_list_path = config.DATASET.TRAIN_LIST_PATH
-            self.train_intrinsic_path = config.DATASET.TRAIN_INTRINSIC_PATH
-            self.val_data_root = config.DATASET.VAL_DATA_ROOT
-            self.val_npz_dir = config.DATASET.VAL_NPZ_ROOT
-            self.val_list_path = config.DATASET.VAL_LIST_PATH
-            self.val_intrinsic_path = config.DATASET.VAL_INTRINSIC_PATH
+            if self.data_source.lower() == "remotesensing":
+                self.remote_train_manifest = config.DATASET.REMOTE_TRAIN_MANIFEST
+                self.remote_val_manifest = config.DATASET.REMOTE_VAL_MANIFEST
+                self.remote_image_size = config.DATASET.REMOTE_IMAGE_SIZE
+                self.remote_max_train_samples = config.DATASET.REMOTE_MAX_TRAIN_SAMPLES
+                self.remote_max_val_samples = config.DATASET.REMOTE_MAX_VAL_SAMPLES
+                self.remote_homography_difficulty = config.DATASET.REMOTE_HOMOGRAPHY_DIFFICULTY
+                self.remote_left_identity = config.DATASET.REMOTE_LEFT_IDENTITY
+                self.remote_val_split_ratio = (
+                    config.DATASET.REMOTE_VAL_SPLIT_RATIO
+                    if "REMOTE_VAL_SPLIT_RATIO" in config.DATASET
+                    else 0.2
+                )
+                self.remote_aug_variants = (
+                    config.DATASET.REMOTE_AUG_VARIANTS
+                    if "REMOTE_AUG_VARIANTS" in config.DATASET
+                    else None
+                )
+            else:
+                self.train_data_root = config.DATASET.TRAIN_DATA_ROOT
+                self.train_npz_dir = config.DATASET.TRAIN_NPZ_ROOT
+                self.train_list_path = config.DATASET.TRAIN_LIST_PATH
+                self.train_intrinsic_path = config.DATASET.TRAIN_INTRINSIC_PATH
+                self.val_data_root = config.DATASET.VAL_DATA_ROOT
+                self.val_npz_dir = config.DATASET.VAL_NPZ_ROOT
+                self.val_list_path = config.DATASET.VAL_LIST_PATH
+                self.val_intrinsic_path = config.DATASET.VAL_INTRINSIC_PATH
             self.min_overlap_score = config.DATASET.MIN_OVERLAP_SCORE_TRAIN
         ## test
         else:
@@ -67,12 +88,16 @@ class SLiM_Dataset(pl.LightningDataModule):
 
         # 2, Read all npz names stated in list
         if self.mode == "train":
-            ## train
-            with open(self.train_list_path, "r") as f:
-                self.train_npz_names = [name.split()[0] for name in f.readlines()]
-            ## val
-            with open(self.val_list_path, "r") as f:
-                self.val_npz_names = [name.split()[0] for name in f.readlines()]
+            if self.data_source.lower() == "remotesensing":
+                self.train_npz_names = []
+                self.val_npz_names = []
+            else:
+                ## train
+                with open(self.train_list_path, "r") as f:
+                    self.train_npz_names = [name.split()[0] for name in f.readlines()]
+                ## val
+                with open(self.val_list_path, "r") as f:
+                    self.val_npz_names = [name.split()[0] for name in f.readlines()]
         else:
             ## test
             with open(self.test_list_path, "r") as f:
@@ -97,6 +122,49 @@ class SLiM_Dataset(pl.LightningDataModule):
         if stage == "fit":
             ## train
             datasets = []
+            if self.data_source.lower() == "remotesensing":
+                if self._has_remote_val_manifest():
+                    datasets.append(
+                        self._build_remote_dataset(
+                            manifest_path=self.remote_train_manifest,
+                            mode="train",
+                            max_samples=self.remote_max_train_samples,
+                        )
+                    )
+                    self.train_dataset = ConcatDataset(datasets)
+
+                    datasets = [
+                        self._build_remote_dataset(
+                            manifest_path=self.remote_val_manifest,
+                            mode="val",
+                            max_samples=self.remote_max_val_samples,
+                        )
+                    ]
+                    self.val_dataset = ConcatDataset(datasets)
+                else:
+                    train_indices, val_indices = self._split_remote_train_manifest()
+                    self.train_dataset = ConcatDataset(
+                        [
+                            self._build_remote_dataset(
+                                manifest_path=self.remote_train_manifest,
+                                mode="train",
+                                manifest_split="all",
+                                row_indices=train_indices,
+                            )
+                        ]
+                    )
+                    self.val_dataset = ConcatDataset(
+                        [
+                            self._build_remote_dataset(
+                                manifest_path=self.remote_train_manifest,
+                                mode="val",
+                                manifest_split="all",
+                                row_indices=val_indices,
+                            )
+                        ]
+                    )
+                return
+
             for npz_name in tqdm(
                 self.train_npz_names,
                 desc=f"Loading {self.data_source} dataset for training",
@@ -254,3 +322,57 @@ class SLiM_Dataset(pl.LightningDataModule):
         )
 
         return self._test_dataloader
+
+    def _has_remote_val_manifest(self):
+        return bool(str(self.remote_val_manifest or "").strip())
+
+    def _build_remote_dataset(
+        self,
+        manifest_path,
+        mode,
+        max_samples=None,
+        manifest_split=None,
+        row_indices=None,
+    ):
+        return RemoteSensingHomographyDataset(
+            manifest_path=manifest_path,
+            image_size=self.remote_image_size,
+            mode=mode,
+            max_samples=max_samples,
+            homography_difficulty=self.remote_homography_difficulty,
+            left_identity=self.remote_left_identity,
+            aug_variants=self.remote_aug_variants,
+            manifest_split=manifest_split,
+            row_indices=row_indices,
+            seed=self.seed,
+        )
+
+    def _split_remote_train_manifest(self):
+        rows = RemoteSensingHomographyDataset.load_manifest_rows(
+            self.remote_train_manifest, split="all"
+        )
+        if self.remote_max_train_samples is not None and int(self.remote_max_train_samples) > 0:
+            rows = rows[: int(self.remote_max_train_samples)]
+        if len(rows) < 2:
+            raise ValueError(
+                "REMOTE_VAL_MANIFEST is empty, but the train manifest has fewer than 2 rows; "
+                "cannot split a validation set."
+            )
+
+        val_ratio = float(self.remote_val_split_ratio)
+        if not 0.0 < val_ratio < 1.0:
+            raise ValueError(
+                f"REMOTE_VAL_SPLIT_RATIO must be between 0 and 1 when REMOTE_VAL_MANIFEST is empty, got {val_ratio}."
+            )
+        n_val = max(1, int(round(len(rows) * val_ratio)))
+        n_val = min(n_val, len(rows) - 1)
+
+        rng = np.random.default_rng(int(self.seed))
+        indices = np.arange(len(rows))
+        rng.shuffle(indices)
+        val_indices = np.sort(indices[:n_val])
+        train_indices = np.sort(indices[n_val:])
+
+        if self.remote_max_val_samples is not None and int(self.remote_max_val_samples) > 0:
+            val_indices = val_indices[: int(self.remote_max_val_samples)]
+        return train_indices.tolist(), val_indices.tolist()

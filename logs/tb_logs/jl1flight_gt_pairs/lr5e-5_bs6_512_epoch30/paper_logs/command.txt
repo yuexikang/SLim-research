@@ -1,0 +1,1 @@
+/root/miniconda3/envs/slim/bin/python train.py --config_name remote_optical_pairs_train --device 1 --task_name jl1flight_gt_pairs --run_name lr5e-5_bs6_512_epoch30 --wandb_mode online --use_wandb --wandb_project slim_remote_sensing --wandb_log_model False

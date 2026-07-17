@@ -45,19 +45,26 @@ class SLiM_Loss(nn.Module):
         b_pos, i_pos, j_pos = b_pos[idx], i_pos[idx], j_pos[idx]
 
         # 2. Get the partial softmax
-        b_pos_unique, inversed_b = b_pos.unique(sorted=True, return_inverse=True)
-        i_pos_unique, inversed_i = i_pos.unique(sorted=True, return_inverse=True)
-        j_pos_unique, inversed_j = j_pos.unique(sorted=True, return_inverse=True)
-        loss = torch.zeros(inversed_i.shape[0], device=conf_gt.device)
+        b_pos_unique = b_pos.unique(sorted=True)
+        loss = torch.zeros(b_pos.shape[0], device=conf_gt.device)
         for b in b_pos_unique:
+            b_mask = b_pos == b
+            i_pos_b = i_pos[b_mask]
+            j_pos_b = j_pos[b_mask]
+            i_pos_unique, inversed_i = i_pos_b.unique(
+                sorted=True, return_inverse=True
+            )
+            j_pos_unique, inversed_j = j_pos_b.unique(
+                sorted=True, return_inverse=True
+            )
             row_pos = F.softmax(conf[b, i_pos_unique, :], 1)
             col_pos = F.softmax(conf[b, :, j_pos_unique], 0)
             pos_conf = (
-                row_pos[inversed_i, j_pos_unique[inversed_j]]
-                * col_pos[i_pos_unique[inversed_i], inversed_j]
+                row_pos[inversed_i, j_pos_b]
+                * col_pos[i_pos_b, inversed_j]
             )
 
-            loss[b_pos_unique[inversed_b] == b] = (
+            loss[b_mask] = (
                 -1
                 * torch.pow(1 - pos_conf, gamma)
                 * torch.clamp_min(pos_conf, 1e-6).log()

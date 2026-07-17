@@ -1,0 +1,1 @@
+/root/miniconda3/envs/slim/bin/python train.py --device 1, --config_name remote_optical_pairs_train --task_name googleearth_pairs --run_name lr5e-5_bs6_512_epoch40_resume --max_epochs 35 --resume_ckpt_path logs/tb_logs/googleearth_pairs/lr5e-5_bs6_512_epoch40/checkpoints/last.ckpt --use_wandb --wandb_project slim_remote_sensing --wandb_log_model False

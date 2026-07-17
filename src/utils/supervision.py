@@ -151,6 +151,84 @@ def spvs_coarse(data, coarse_scale):
     data.update({"spv_b_ids": b_ids, "spv_i_ids": i_ids, "spv_j_ids": j_ids})
 
 
+@torch.no_grad()
+def warp_points_homography(points, H, inverse=False):
+    if inverse:
+        H = torch.linalg.inv(H)
+    ones = torch.ones(*points.shape[:-1], 1, device=points.device, dtype=points.dtype)
+    points_h = torch.cat([points, ones], dim=-1)
+    warped = torch.einsum("bij,bnj->bni", H.to(points.dtype), points_h)
+    denom = warped[..., 2:].clamp(min=1e-8)
+    return warped[..., :2] / denom
+
+
+@torch.no_grad()
+def spvs_coarse_homography(data, coarse_scale):
+    device = data["image0"].device
+    N, _, H0, W0 = data["image0"].shape
+    _, _, H1, W1 = data["image1"].shape
+    scale = coarse_scale
+    scale0 = (
+        scale * data["scale0"][:, None]
+        if "scale0" in data
+        else torch.tensor([[scale, scale]], device=device).repeat(N, 1)[:, None]
+    )
+    scale1 = (
+        scale * data["scale1"][:, None]
+        if "scale1" in data
+        else torch.tensor([[scale, scale]], device=device).repeat(N, 1)[:, None]
+    )
+    h0, w0, h1, w1 = map(lambda x: x // scale, [H0, W0, H1, W1])
+
+    grid_pt0_c = (
+        create_meshgrid(h0, w0, False, device).reshape(1, h0 * w0, 2).repeat(N, 1, 1)
+    ) + 0.5
+    grid_pt0_i = scale0 * grid_pt0_c
+    grid_pt1_c = (
+        create_meshgrid(h1, w1, False, device).reshape(1, h1 * w1, 2).repeat(N, 1, 1)
+    ) + 0.5
+    grid_pt1_i = scale1 * grid_pt1_c
+
+    H_0to1 = data["H_0to1"].to(device=device, dtype=grid_pt0_i.dtype)
+    w_pt0_i = warp_points_homography(grid_pt0_i, H_0to1, inverse=False)
+    w_pt1_i = warp_points_homography(grid_pt1_i, H_0to1, inverse=True)
+    w_pt0_c = w_pt0_i / scale1 - 0.5
+    w_pt1_c = w_pt1_i / scale0 - 0.5
+
+    w_pt0_c_round = w_pt0_c.round().long()
+    nearest_index1 = w_pt0_c_round[..., 0] + w_pt0_c_round[..., 1] * w1
+    w_pt1_c_round = w_pt1_c.round().long()
+    nearest_index0 = w_pt1_c_round[..., 0] + w_pt1_c_round[..., 1] * w0
+
+    def out_bound_mask(pt, w, h):
+        return (
+            (pt[..., 0] < 0) + (pt[..., 0] >= w) + (pt[..., 1] < 0) + (pt[..., 1] >= h)
+        )
+
+    nearest_index1[out_bound_mask(w_pt0_c_round, w1, h1)] = 0
+    nearest_index0[out_bound_mask(w_pt1_c_round, w0, h0)] = 0
+
+    loop_back = torch.stack(
+        [nearest_index0[_b][_i] for _b, _i in enumerate(nearest_index1)], dim=0
+    )
+    correct_0to1 = loop_back == torch.arange(h0 * w0, device=device)[None].repeat(N, 1)
+    correct_0to1[:, 0] = False
+
+    conf_matrix_gt = torch.zeros(N, h0 * w0, h1 * w1, device=device)
+    b_ids, i_ids = torch.where(correct_0to1 != 0)
+    j_ids = nearest_index1[b_ids, i_ids]
+    conf_matrix_gt[b_ids, i_ids, j_ids] = 1
+    data.update({"conf_matrix_gt": conf_matrix_gt})
+
+    if len(b_ids) == 0:
+        logger.warning(f"No homography coarse match found for: {data['pair_names']}")
+        b_ids = torch.tensor([0], device=device)
+        i_ids = torch.tensor([0], device=device)
+        j_ids = torch.tensor([0], device=device)
+
+    data.update({"spv_b_ids": b_ids, "spv_i_ids": i_ids, "spv_j_ids": j_ids})
+
+
 def compute_supervision_coarse(data, coarse_scale, config):
     assert len(set(data["dataset_name"])) == 1, (
         "Do not support mixed datasets training!"
@@ -159,6 +237,9 @@ def compute_supervision_coarse(data, coarse_scale, config):
     if data_source.lower() in ["scannet", "megadepth"]:
         spvs_coarse(data, coarse_scale)
         spvs_intermediate(data, config)
+    elif data_source.lower() in ["remotesensing", "remote"]:
+        spvs_coarse_homography(data, coarse_scale)
+        spvs_intermediate_homography(data, config)
     else:
         raise ValueError(f"Unknown data source: {data_source}")
 
@@ -428,6 +509,161 @@ def spvs_intermediate(data, config):
     data.update({"intermediate_coord_1_gt": intermediate_coord_1_all})
 
 
+@torch.no_grad()
+def spvs_intermediate_homography(data, config):
+    device = data["image0"].device
+    N, _, _, _ = data["image0"].shape
+    coarse_coord_0, coarse_coord_1 = get_coarse_coord(data, config)
+    coarse_scale = config["MODEL"]["COARSE_SCALE"]
+    fine_scale = 1
+    b_idx_c = data["spv_b_ids"]
+
+    window_size = int(coarse_scale / fine_scale)
+    absolute_fine_scale0 = (
+        fine_scale * data["scale0"][b_idx_c]
+        if "scale0" in data
+        else torch.tensor([[fine_scale, fine_scale]], device=device).repeat(N, 1)[b_idx_c]
+    )
+    absolute_fine_scale1 = (
+        fine_scale * data["scale1"][b_idx_c]
+        if "scale1" in data
+        else torch.tensor([[fine_scale, fine_scale]], device=device).repeat(N, 1)[b_idx_c]
+    )
+    intermediate_coord_0 = (coarse_coord_0 / absolute_fine_scale0).round() + 0.5
+    intermediate_coord_1 = (coarse_coord_1 / absolute_fine_scale1).round() + 0.5
+
+    b_idx_c_unique = b_idx_c.unique(sorted=True)
+    offset = torch.arange(window_size, device=device, dtype=torch.long).unsqueeze(0)
+    conf_matrix_gt = torch.zeros(
+        b_idx_c.shape[0], window_size**2, window_size**2, device=device
+    )
+
+    def out_bound_mask(pt, w, h):
+        return (
+            (pt[..., 0] < 0) + (pt[..., 0] >= w) + (pt[..., 1] < 0) + (pt[..., 1] >= h)
+        )
+
+    b_ids_all = []
+    m_ids_all = []
+    i_ids_all = []
+    j_ids_all = []
+    intermediate_coord_0_all = []
+    intermediate_coord_1_all = []
+
+    for b in b_idx_c_unique:
+        batch_mask = b_idx_c == b
+        global_m_ids = torch.where(batch_mask)[0]
+        absolute_fine_scale0_b = (
+            fine_scale * data["scale0"][b] if "scale0" in data else torch.tensor([fine_scale, fine_scale], device=device)
+        )
+        absolute_fine_scale1_b = (
+            fine_scale * data["scale1"][b] if "scale1" in data else torch.tensor([fine_scale, fine_scale], device=device)
+        )
+        intermediate_coord_0_b = intermediate_coord_0[batch_mask]
+        intermediate_coord_1_b = intermediate_coord_1[batch_mask]
+
+        row_coord_0 = intermediate_coord_0_b[:, 1].unsqueeze(1) + offset
+        col_coord_0 = intermediate_coord_0_b[:, 0].unsqueeze(1) + offset
+        coord_grid_0 = create_grid(row_coord_0, col_coord_0).permute(0, 2, 1, 3).float()
+        row_coord_1 = intermediate_coord_1_b[:, 1].unsqueeze(1) + offset
+        col_coord_1 = intermediate_coord_1_b[:, 0].unsqueeze(1) + offset
+        coord_grid_1 = create_grid(row_coord_1, col_coord_1).permute(0, 2, 1, 3).float()
+
+        coord_grid_0 *= absolute_fine_scale0_b.unsqueeze(0).unsqueeze(0)
+        coord_grid_1 *= absolute_fine_scale1_b.unsqueeze(0).unsqueeze(0)
+        flat_grid_0 = rearrange(coord_grid_0, "m h w c -> 1 (m h w) c")
+        flat_grid_1 = rearrange(coord_grid_1, "m h w c -> 1 (m h w) c")
+
+        H_0to1 = data["H_0to1"][b].to(device=device, dtype=flat_grid_0.dtype).unsqueeze(0)
+        w_pt0_i = warp_points_homography(flat_grid_0, H_0to1, inverse=False)
+        w_pt1_i = warp_points_homography(flat_grid_1, H_0to1, inverse=True)
+        w_pt0_i = rearrange(
+            w_pt0_i,
+            "bs (m h w) c -> (bs m) (h w) c",
+            bs=1,
+            m=intermediate_coord_0_b.shape[0],
+            h=window_size,
+            w=window_size,
+            c=2,
+        )
+        w_pt1_i = rearrange(
+            w_pt1_i,
+            "bs (m h w) c -> (bs m) (h w) c",
+            bs=1,
+            m=intermediate_coord_1_b.shape[0],
+            h=window_size,
+            w=window_size,
+            c=2,
+        )
+
+        w_pt0_i /= absolute_fine_scale1_b.unsqueeze(0).unsqueeze(0)
+        w_pt1_i /= absolute_fine_scale0_b.unsqueeze(0).unsqueeze(0)
+        w_pt0_i_round = (w_pt0_i - intermediate_coord_1_b.unsqueeze(1)).round().long()
+        w_pt1_i_round = (w_pt1_i - intermediate_coord_0_b.unsqueeze(1)).round().long()
+        nearest_index1 = w_pt0_i_round[..., 0] + w_pt0_i_round[..., 1] * window_size
+        nearest_index0 = w_pt1_i_round[..., 0] + w_pt1_i_round[..., 1] * window_size
+        nearest_index1[out_bound_mask(w_pt0_i_round, window_size, window_size)] = 0
+        nearest_index0[out_bound_mask(w_pt1_i_round, window_size, window_size)] = 0
+
+        batch_indices = torch.arange(nearest_index1.size(0), device=device)
+        loop_back = nearest_index0[batch_indices.unsqueeze(1), nearest_index1]
+        correct_0to1 = loop_back == torch.arange(window_size**2, device=device)[None].repeat(
+            intermediate_coord_0_b.shape[0], 1
+        )
+        local_m_ids, i_ids = torch.where(correct_0to1 != 0)
+        j_ids = nearest_index1[local_m_ids, i_ids]
+        global_ids = global_m_ids[local_m_ids]
+        conf_matrix_gt[global_ids, i_ids, j_ids] = 1
+
+        coord_grid_0_flat = rearrange(
+            flat_grid_0,
+            "bs (m h w) c -> (bs m) (h w) c",
+            bs=1,
+            m=intermediate_coord_0_b.shape[0],
+            h=window_size,
+            w=window_size,
+            c=2,
+        )
+        coord_grid_1_flat = rearrange(
+            flat_grid_1,
+            "bs (m h w) c -> (bs m) (h w) c",
+            bs=1,
+            m=intermediate_coord_1_b.shape[0],
+            h=window_size,
+            w=window_size,
+            c=2,
+        )
+
+        if local_m_ids.numel() > 0:
+            b_ids_all.append(b_idx_c[global_ids])
+            m_ids_all.append(global_ids)
+            i_ids_all.append(i_ids)
+            j_ids_all.append(j_ids)
+            intermediate_coord_0_all.append(coord_grid_0_flat[local_m_ids, i_ids])
+            intermediate_coord_1_all.append(coord_grid_1_flat[local_m_ids, j_ids])
+
+    if not b_ids_all:
+        conf_matrix_gt[0, 0, 0] = 1
+        b_ids_all = [b_idx_c[:1]]
+        m_ids_all = [torch.zeros(1, device=device, dtype=torch.long)]
+        i_ids_all = [torch.zeros(1, device=device, dtype=torch.long)]
+        j_ids_all = [torch.zeros(1, device=device, dtype=torch.long)]
+        intermediate_coord_0_all = [coarse_coord_0[:1]]
+        intermediate_coord_1_all = [coarse_coord_1[:1]]
+
+    data.update({"conf_matrix_f_gt": conf_matrix_gt})
+    data.update(
+        {
+            "spv_b_ids_it": torch.cat(b_ids_all, dim=0),
+            "spv_m_ids_it": torch.cat(m_ids_all, dim=0),
+            "spv_i_ids_it": torch.cat(i_ids_all, dim=0),
+            "spv_j_ids_it": torch.cat(j_ids_all, dim=0),
+        }
+    )
+    data.update({"intermediate_coord_0_gt": torch.cat(intermediate_coord_0_all, dim=0)})
+    data.update({"intermediate_coord_1_gt": torch.cat(intermediate_coord_1_all, dim=0)})
+
+
 ##############  ↓  Fine-Level supervision  ↓  ##############
 @torch.no_grad
 def spvs_fine(data, config):
@@ -489,9 +725,54 @@ def spvs_fine(data, config):
     data.update({"fine_coord_1_gt": target_fine_coord_1})
 
 
+@torch.no_grad()
+def spvs_fine_homography(data, config):
+    coarse_scale = config["MODEL"]["COARSE_SCALE"]
+    fine_scale = 1
+    device = data["image0"].device
+    N = data["image0"].shape[0]
+    absolute_scale1 = (
+        fine_scale * data["scale1"]
+        if "scale1" in data
+        else torch.tensor([[fine_scale, fine_scale]], device=device).repeat(N, 1)
+    )
+
+    fine_coord_0 = data["fine_coord_0"]
+    intermediate_coord_1 = data["intermediate_coord_1"]
+    target_fine_coord_1 = torch.zeros_like(fine_coord_0)
+    offset_f_1 = torch.zeros_like(fine_coord_0)
+    radius = int(config["MODEL"]["REFINE_LOOKUP_RADIUS"])
+    batch_idx = data["b_idx_it"]
+
+    sorted_batch_unique = batch_idx.unique(sorted=True)
+    for b in sorted_batch_unique:
+        batch_mask = batch_idx == b
+        fine_coord_0_single_batch = fine_coord_0[batch_mask].unsqueeze(0)
+        H_0to1 = data["H_0to1"][b].to(device=device, dtype=fine_coord_0.dtype).unsqueeze(0)
+        target_fine_coord_1_single_batch = warp_points_homography(
+            fine_coord_0_single_batch, H_0to1, inverse=False
+        )
+        offset_f_1[batch_mask] = (
+            (target_fine_coord_1_single_batch[0] - intermediate_coord_1[batch_mask])
+            / absolute_scale1[b]
+            / radius
+        )
+        target_fine_coord_1[batch_mask] = target_fine_coord_1_single_batch[0]
+
+    correct_mask = (
+        torch.linalg.norm(offset_f_1, ord=float("inf"), dim=1)
+        < ((coarse_scale / fine_scale) / 2 / radius) * 1.5
+    )
+
+    data.update({"correct_mask": correct_mask, "coord_offset_gt": offset_f_1})
+    data.update({"fine_coord_1_gt": target_fine_coord_1})
+
+
 def compute_supervision_fine(data, config):
     data_source = data["dataset_name"][0]
     if data_source.lower() in ["scannet", "megadepth"]:
         spvs_fine(data, config)
+    elif data_source.lower() in ["remotesensing", "remote"]:
+        spvs_fine_homography(data, config)
     else:
         raise NotImplementedError

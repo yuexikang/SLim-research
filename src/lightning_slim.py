@@ -1,7 +1,7 @@
 import pprint
 import numpy as np
 from yacs.config import CfgNode as CN
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from pathlib import Path
 from loguru import logger
 import torch
@@ -279,8 +279,267 @@ class PL_SLiM(pl.LightningModule):
             ret_dict = {"metrics": metrics}
         return ret_dict, rel_pair_names
 
+    @staticmethod
+    def _is_remote_batch(batch):
+        dataset_name = batch.get("dataset_name", "")
+        if isinstance(dataset_name, (list, tuple)):
+            dataset_name = dataset_name[0] if dataset_name else ""
+        return str(dataset_name).lower() == "remotesensing"
+
+    @staticmethod
+    def _get_pair_names(batch):
+        pair_names = batch.get("pair_names")
+        if pair_names is None:
+            bs = batch["image0"].size(0)
+            return [(str(i), str(i)) for i in range(bs)]
+        return list(zip(*pair_names))
+
+    @staticmethod
+    def _get_batch_value(values, idx, default=""):
+        if isinstance(values, torch.Tensor):
+            if values.ndim == 0:
+                return values.detach().cpu().item()
+            if idx < values.shape[0]:
+                return values[idx].detach().cpu().item()
+            return default
+        if isinstance(values, (list, tuple)):
+            return values[idx] if idx < len(values) else default
+        if values is None:
+            return default
+        return values
+
+    def _get_remote_identifier(self, batch, pair_name, batch_idx):
+        remote_id = self._get_batch_value(batch.get("remote_id"), batch_idx, "")
+        aug_variant = self._get_batch_value(batch.get("remote_aug_variant"), batch_idx, "")
+        pair_id = self._get_batch_value(batch.get("pair_id"), batch_idx, "")
+        return "#".join(
+            [
+                str(pair_name[0]) if len(pair_name) > 0 else "",
+                str(pair_name[1]) if len(pair_name) > 1 else "",
+                f"remote_id={remote_id}",
+                f"pair_id={pair_id}",
+                f"aug={aug_variant}",
+            ]
+        )
+
+    @staticmethod
+    def _warp_points_by_homography(points, H):
+        ones = torch.ones(points.shape[0], 1, device=points.device, dtype=points.dtype)
+        points_h = torch.cat([points, ones], dim=1)
+        warped_h = points_h @ H.T
+        denom = warped_h[:, 2:3].clamp(min=1e-8)
+        return warped_h[:, :2] / denom
+
+    def _compute_remote_homography_metrics(self, batch):
+        with self.profiler.profile("Compute remote homography metrics"):
+            bs = batch["image0"].size(0)
+            pair_names = self._get_pair_names(batch)
+            b_ids = batch.get(
+                "b_idx_it",
+                torch.empty(0, device=batch["image0"].device, dtype=torch.long),
+            )
+            pts0 = batch.get("fine_coord_0")
+            pts1 = batch.get("fine_coord_1")
+            H_0to1 = batch["H_0to1"].to(device=batch["image0"].device)
+
+            reproj_errors = []
+            num_matches = []
+            identifiers = []
+            aug_variants = []
+            for b in range(bs):
+                identifiers.append(self._get_remote_identifier(batch, pair_names[b], b))
+                aug_variants.append(
+                    str(self._get_batch_value(batch.get("remote_aug_variant"), b, "unknown"))
+                )
+                if pts0 is None or pts1 is None or b_ids.numel() == 0:
+                    reproj_errors.append(np.empty(0, dtype=np.float32))
+                    num_matches.append(0)
+                    continue
+
+                mask = b_ids == b
+                b_pts0 = pts0[mask]
+                b_pts1 = pts1[mask]
+                num_matches.append(int(b_pts0.shape[0]))
+                if b_pts0.numel() == 0:
+                    reproj_errors.append(np.empty(0, dtype=np.float32))
+                    continue
+
+                H = H_0to1[b].to(dtype=b_pts0.dtype)
+                warped_pts0 = self._warp_points_by_homography(b_pts0, H)
+                errors = torch.linalg.norm(warped_pts0 - b_pts1, dim=1)
+                reproj_errors.append(errors.detach().cpu().numpy())
+
+            return {
+                "identifiers": identifiers,
+                "reproj_errors": reproj_errors,
+                "num_matches": num_matches,
+                "aug_variants": aug_variants,
+            }
+
+    @staticmethod
+    def _aggregate_remote_homography_metrics(metrics):
+        unique_ids = OrderedDict(
+            (identifier, idx) for idx, identifier in enumerate(metrics["identifiers"])
+        )
+        unique_indices = list(unique_ids.values())
+        errors_per_pair = [
+            np.asarray(metrics["reproj_errors"][idx], dtype=np.float32)
+            for idx in unique_indices
+        ]
+        num_matches = [int(metrics["num_matches"][idx]) for idx in unique_indices]
+        aug_variants = metrics.get("aug_variants")
+        aug_variants = (
+            [str(aug_variants[idx]) for idx in unique_indices]
+            if aug_variants is not None
+            else ["unknown"] * len(unique_indices)
+        )
+        all_errors = (
+            np.concatenate(errors_per_pair)
+            if any(len(errors) > 0 for errors in errors_per_pair)
+            else np.empty(0, dtype=np.float32)
+        )
+
+        val_metrics = {
+            "remote_num_pairs": len(unique_indices),
+            "remote_num_matches": int(sum(num_matches)),
+            "remote_mean_matches": float(np.mean(num_matches)) if num_matches else 0.0,
+            "remote_mean_error": float(np.mean(all_errors)) if len(all_errors) else 0.0,
+            "remote_median_error": float(np.median(all_errors)) if len(all_errors) else 0.0,
+        }
+        for thr in [1, 3, 5, 10]:
+            val_metrics[f"remote_inlier@{thr}"] = (
+                float(np.mean(all_errors < thr)) if len(all_errors) else 0.0
+            )
+            pair_precisions = [
+                float(np.mean(errors < thr)) if len(errors) else 0.0
+                for errors in errors_per_pair
+            ]
+            val_metrics[f"remote_pair_inlier@{thr}"] = (
+                float(np.mean(pair_precisions)) if pair_precisions else 0.0
+            )
+        for variant in sorted(set(aug_variants)):
+            variant_indices = [i for i, v in enumerate(aug_variants) if v == variant]
+            variant_errors = [
+                errors_per_pair[i] for i in variant_indices if len(errors_per_pair[i]) > 0
+            ]
+            variant_all_errors = (
+                np.concatenate(variant_errors)
+                if variant_errors
+                else np.empty(0, dtype=np.float32)
+            )
+            key = str(variant).replace("/", "_")
+            val_metrics[f"remote_{key}_num_pairs"] = len(variant_indices)
+            val_metrics[f"remote_{key}_inlier@5"] = (
+                float(np.mean(variant_all_errors < 5)) if len(variant_all_errors) else 0.0
+            )
+            val_metrics[f"remote_{key}_median_error"] = (
+                float(np.median(variant_all_errors)) if len(variant_all_errors) else 0.0
+            )
+        return val_metrics
+
+    def _collect_remote_batch_debug_info(self, batch, batch_idx):
+        if not self._is_remote_batch(batch):
+            return None
+
+        bs = int(batch["image0"].shape[0])
+        remote_ids = batch.get("remote_id", [""] * bs)
+        aug_variants = batch.get("remote_aug_variant", [""] * bs)
+        remote_modes = batch.get("remote_mode", [""] * bs)
+        pair_types = batch.get("remote_pair_type", [""] * bs)
+        pair_names = self._get_pair_names(batch)
+
+        def get_value(values, idx, default=""):
+            if isinstance(values, torch.Tensor):
+                return default
+            if not isinstance(values, (list, tuple)):
+                return values
+            return values[idx] if idx < len(values) else default
+
+        items = []
+        for b in range(bs):
+            names = pair_names[b] if b < len(pair_names) else ("", "")
+            items.append(
+                {
+                    "batch_pos": b,
+                    "remote_id": str(get_value(remote_ids, b)),
+                    "mode": str(get_value(remote_modes, b)),
+                    "pair_type": str(get_value(pair_types, b)),
+                    "aug_variant": str(get_value(aug_variants, b)),
+                    "image0": str(names[0]) if len(names) > 0 else "",
+                    "image1": str(names[1]) if len(names) > 1 else "",
+                }
+            )
+
+        return {
+            "epoch": int(self.current_epoch),
+            "global_step": int(self.global_step),
+            "batch_idx": int(batch_idx),
+            "global_rank": int(getattr(self, "global_rank", 0)),
+            "local_rank": int(getattr(self, "local_rank", 0)),
+            "items": items,
+        }
+
     def training_step(self, batch, batch_idx):
-        self._trainval_inference(batch, training=True)
+        remote_debug_info = self._collect_remote_batch_debug_info(batch, batch_idx)
+        try:
+            self._trainval_inference(batch, training=True)
+        except Exception:
+            if remote_debug_info is not None:
+                logger.error(
+                    "Remote batch failed before/during training_step:\n{}",
+                    pprint.pformat(remote_debug_info, width=160),
+                )
+            raise
+        log_batch_size = batch["image0"].shape[0]
+        log_device = batch["image0"].device
+        self.log(
+            "train/loss",
+            batch["loss"],
+            on_step=True,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+            sync_dist=True,
+            batch_size=log_batch_size,
+        )
+        for k, v in batch["loss_scalars"].items():
+            if not torch.is_tensor(v):
+                v = torch.tensor(v, device=log_device, dtype=batch["loss"].dtype)
+            else:
+                v = v.to(device=log_device, dtype=batch["loss"].dtype)
+            self.log(
+                f"train/{k}",
+                v,
+                on_step=True,
+                on_epoch=True,
+                logger=True,
+                sync_dist=True,
+                batch_size=log_batch_size,
+            )
+        num_matches = torch.as_tensor(
+            batch["num_matches"], device=log_device, dtype=batch["loss"].dtype
+        )
+        self.log(
+            "train/num_matches",
+            num_matches,
+            on_step=True,
+            on_epoch=True,
+            logger=True,
+            sync_dist=True,
+            batch_size=log_batch_size,
+        )
+        forward_time = torch.as_tensor(
+            batch["forward_time"], device=log_device, dtype=batch["loss"].dtype
+        )
+        self.log(
+            "train/forward_time",
+            forward_time,
+            on_step=True,
+            on_epoch=True,
+            logger=True,
+            sync_dist=True,
+            batch_size=log_batch_size,
+        )
         # logging
         if (
             self.trainer.global_rank == 0
@@ -349,6 +608,12 @@ class PL_SLiM(pl.LightningModule):
             if key in batch.keys():
                 self.val_parts_times[key].append(batch[key])
 
+        if self._is_remote_batch(batch):
+            self.validation_outputs.append(
+                {"remote_metrics": self._compute_remote_homography_metrics(batch)}
+            )
+            return
+
         ret_dict, _ = self._compute_metrics(batch)
 
         val_plot_interval = max(self.trainer.num_val_batches[0] // self.n_vals_plot, 1)
@@ -370,6 +635,60 @@ class PL_SLiM(pl.LightningModule):
         self.slim.initial_forward()
 
     def on_validation_epoch_end(self):
+        if not self.validation_outputs:
+            torch.cuda.empty_cache()
+            return
+        if self.trainer.sanity_checking:
+            self.validation_outputs.clear()
+            torch.cuda.empty_cache()
+            return
+
+        if "remote_metrics" in self.validation_outputs[0]:
+            cur_epoch = self.trainer.current_epoch
+            _metrics = [o["remote_metrics"] for o in self.validation_outputs]
+            metrics = {
+                k: flattenList(all_gather(flattenList([_me[k] for _me in _metrics])))
+                for k in _metrics[0]
+            }
+            val_metrics_4tb = self._aggregate_remote_homography_metrics(metrics)
+
+            for k, v in val_metrics_4tb.items():
+                self.log(k, v, prog_bar=(k == "remote_inlier@5"), sync_dist=True)
+
+            if self.trainer.global_rank == 0:
+                for k, v in val_metrics_4tb.items():
+                    self.logger.experiment.add_scalar(
+                        f"remote_val/{k}", v, global_step=cur_epoch
+                    )
+                if len(self.val_forward_times) > 0:
+                    avg_forward_time = self.calculate_trimmed_mean(
+                        self.val_forward_times
+                    )
+                    self.logger.experiment.add_scalar(
+                        "remote_val/avg_forward_time",
+                        avg_forward_time,
+                        self.trainer.current_epoch,
+                    )
+                    self.val_forward_times.clear()
+                keys = test_timer_list
+                if len(self.val_parts_times.keys()) and len(
+                    self.val_parts_times[keys[0]]
+                ):
+                    for k in keys:
+                        avg_time_for_this_part = self.calculate_trimmed_mean(
+                            self.val_parts_times[k]
+                        )
+                        self.logger.experiment.add_scalar(
+                            f"remote_val/{k}",
+                            avg_time_for_this_part,
+                            self.trainer.current_epoch,
+                        )
+                        self.val_parts_times[k].clear()
+
+            self.validation_outputs.clear()
+            torch.cuda.empty_cache()
+            return
+
         # handle multiple validation sets
         multi_outputs = (
             [self.validation_outputs]
@@ -556,6 +875,8 @@ class PL_SLiM(pl.LightningModule):
         n = len(_list)
         trim_count = int(0.1 * n)
         sorted_list = sorted(_list)
-        trimmed_list = sorted_list[trim_count:-trim_count]
+        trimmed_list = (
+            sorted_list[trim_count:-trim_count] if trim_count > 0 else sorted_list
+        )
         avg = sum(trimmed_list) / len(trimmed_list)
         return avg
