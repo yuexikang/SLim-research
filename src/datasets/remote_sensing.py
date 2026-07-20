@@ -33,6 +33,7 @@ class RemoteSensingHomographyDataset(Dataset):
         manifest_split=None,
         row_indices=None,
         seed=0,
+        deterministic_train=False,
     ):
         self.manifest_path = Path(manifest_path)
         self.image_size = int(image_size)
@@ -41,6 +42,8 @@ class RemoteSensingHomographyDataset(Dataset):
         self.left_identity = bool(left_identity)
         self.aug_variants = self._parse_aug_variants(aug_variants)
         self.seed = int(seed)
+        self.deterministic_train = bool(deterministic_train)
+        self.epoch = 0
 
         split_filter = mode if manifest_split is None else manifest_split
         rows = self.load_manifest_rows(self.manifest_path, split=split_filter)
@@ -54,6 +57,9 @@ class RemoteSensingHomographyDataset(Dataset):
 
     def __len__(self):
         return len(self.rows) * len(self.aug_variants)
+
+    def set_epoch(self, epoch):
+        self.epoch = int(epoch)
 
     def __getitem__(self, idx):
         row_idx = idx // len(self.aug_variants)
@@ -157,6 +163,9 @@ class RemoteSensingHomographyDataset(Dataset):
 
     def _rng(self, idx):
         if self.mode == "train":
+            if self.deterministic_train:
+                seed = (self.seed + self.epoch * 1000003 + idx * 9973) % (2**32)
+                return np.random.default_rng(seed)
             return np.random.default_rng()
         return np.random.default_rng(self.seed + idx * 9973)
 

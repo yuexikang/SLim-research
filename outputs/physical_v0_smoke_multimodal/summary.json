@@ -1,0 +1,83 @@
+{
+  "evaluation": "multimodal",
+  "protocol": {
+    "matching": "coarse cosine mutual-nearest-neighbor; no RANSAC",
+    "correct": "original-coordinate reprojection error <= 5.0px",
+    "success": "NCM >= 20",
+    "failed_rmse": 10.0
+  },
+  "model": "physical_full",
+  "checkpoint": "logs/tb_logs/physical_v0_smoke/physical_full_b4_full_bf16/checkpoints/last.ckpt",
+  "manifest": "data/remote_archive/manifests/test_SwinMatcher_proposed_gt.jsonl",
+  "image_size": 512,
+  "trainable_parameters": 44899,
+  "overall": {
+    "num_pairs": 1,
+    "NCM": 5.0,
+    "Pre": 0.0072992700729927005,
+    "SR": 0.0,
+    "RMSE": 10.0,
+    "mean_matches": 685.0,
+    "mean_runtime_ms": 236.50237399851903
+  },
+  "by_modality_pair": {
+    "sar-lidar": {
+      "num_pairs": 1,
+      "NCM": 5.0,
+      "Pre": 0.0072992700729927005,
+      "SR": 0.0,
+      "RMSE": 10.0,
+      "mean_matches": 685.0,
+      "mean_runtime_ms": 236.50237399851903
+    }
+  },
+  "optical_reference_precision": null,
+  "cross_modal_retention": {},
+  "slim_coarse_complementarity": {
+    "overall": {
+      "r0": {
+        "both_correct": 1,
+        "physical_only": 10,
+        "slim_only": 260,
+        "both_wrong": 2475,
+        "CRR": 0.004024144869215292,
+        "num_correspondences": 2746
+      },
+      "r1": {
+        "both_correct": 30,
+        "physical_only": 70,
+        "slim_only": 551,
+        "both_wrong": 2095,
+        "CRR": 0.03233256351039261,
+        "num_correspondences": 2746
+      }
+    },
+    "sar-lidar": {
+      "r0": {
+        "both_correct": 1,
+        "physical_only": 10,
+        "slim_only": 260,
+        "both_wrong": 2475,
+        "CRR": 0.004024144869215292,
+        "num_correspondences": 2746
+      },
+      "r1": {
+        "both_correct": 30,
+        "physical_only": 70,
+        "slim_only": 551,
+        "both_wrong": 2095,
+        "CRR": 0.03233256351039261,
+        "num_correspondences": 2746
+      }
+    }
+  },
+  "checkpoint_hparams": {
+    "model_name": "physical_full",
+    "similarity_mode": "full",
+    "learning_rate": 0.0001,
+    "weight_decay": 0.01,
+    "max_epochs": 1,
+    "coarse_scale": 8,
+    "chunk_size": 256
+  }
+}

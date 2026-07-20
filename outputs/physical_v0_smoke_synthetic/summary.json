@@ -1,0 +1,83 @@
+{
+  "evaluation": "synthetic",
+  "model": "physical_full",
+  "checkpoint": "logs/tb_logs/physical_v0_smoke/physical_full_b4_full_bf16/checkpoints/last.ckpt",
+  "manifest": "data/remote_archive/manifests/test_optical_single_images.jsonl",
+  "base_rows": 1,
+  "generated_pairs": 5,
+  "image_size": 512,
+  "homography_difficulty": 0.3,
+  "trainable_parameters": 44899,
+  "mean_encoder_pair_runtime_ms": 52.63115959824063,
+  "metrics": {
+    "all": {
+      "num_correspondences": 18100,
+      "R@0": 0.33679558011049726,
+      "R@1": 0.42337016574585634,
+      "positive_similarity": 0.9121606007992233,
+      "hard_negative_similarity": 0.9352708172666434,
+      "mean_margin": -0.023110218495953808,
+      "entropy": 7.824571822361393,
+      "normalized_entropy": 0.9407059126795985
+    },
+    "translation": {
+      "num_correspondences": 3719,
+      "R@0": 0.23931164291476203,
+      "R@1": 0.36192524872277493,
+      "positive_similarity": 0.9041772992676963,
+      "hard_negative_similarity": 0.935365299923377,
+      "mean_margin": -0.031188014567170807,
+      "entropy": 7.835567415898511,
+      "normalized_entropy": 0.942027851790951
+    },
+    "scale": {
+      "num_correspondences": 3363,
+      "R@0": 0.32679155515908415,
+      "R@1": 0.3856675587273268,
+      "positive_similarity": 0.9088756959423436,
+      "hard_negative_similarity": 0.9320114185651994,
+      "mean_margin": -0.02313571982251864,
+      "entropy": 7.797489162856825,
+      "normalized_entropy": 0.9374499166433633
+    },
+    "yaw": {
+      "num_correspondences": 3867,
+      "R@0": 0.5065942591155935,
+      "R@1": 0.6152055857253685,
+      "positive_similarity": 0.9264257054690215,
+      "hard_negative_similarity": 0.9362211831632683,
+      "mean_margin": -0.009795483474371381,
+      "entropy": 7.8177711401979595,
+      "normalized_entropy": 0.939888294457711
+    },
+    "pitch": {
+      "num_correspondences": 3520,
+      "R@0": 0.4198863636363636,
+      "R@1": 0.4909090909090909,
+      "positive_similarity": 0.9213618668642911,
+      "hard_negative_similarity": 0.9352739984338934,
+      "mean_margin": -0.013912126743658023,
+      "entropy": 7.797217594493519,
+      "normalized_entropy": 0.9374172687530518
+    },
+    "roll": {
+      "num_correspondences": 3631,
+      "R@0": 0.18452217020104655,
+      "R@1": 0.2514458826769485,
+      "positive_similarity": 0.8992675732922797,
+      "hard_negative_similarity": 0.9371776512522108,
+      "mean_margin": -0.03791007493948089,
+      "entropy": 7.872154166500813,
+      "normalized_entropy": 0.9464264798512376
+    }
+  },
+  "checkpoint_hparams": {
+    "model_name": "physical_full",
+    "similarity_mode": "full",
+    "learning_rate": 0.0001,
+    "weight_decay": 0.01,
+    "max_epochs": 1,
+    "coarse_scale": 8,
+    "chunk_size": 256
+  }
+}

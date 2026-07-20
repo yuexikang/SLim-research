@@ -1,0 +1,224 @@
+{
+  "evaluation": "multimodal",
+  "protocol": {
+    "matching": "coarse cosine mutual-nearest-neighbor; no RANSAC",
+    "correct": "original-coordinate reprojection error <= 5.0px",
+    "success": "NCM >= 20",
+    "failed_rmse": 10.0
+  },
+  "model": "physical_full",
+  "checkpoint": "logs/tb_logs/physical_v0/physical_full_ratio100_gpu1_bs8_seed66_resume/checkpoints/best-12-0.9969.ckpt",
+  "manifest": "data/remote_archive/manifests/test_SwinMatcher_expanded_MRSI_gt.jsonl",
+  "image_size": 512,
+  "trainable_parameters": 44899,
+  "overall": {
+    "num_pairs": 600,
+    "NCM": 27.768333333333334,
+    "Pre": 0.032126297257038396,
+    "SR": 0.2916666666666667,
+    "RMSE": 8.013900208136592,
+    "mean_matches": 671.2816666666666,
+    "mean_runtime_ms": 12.130337228882127
+  },
+  "by_modality_pair": {
+    "optical-depth": {
+      "num_pairs": 100,
+      "NCM": 15.48,
+      "Pre": 0.02445666933349236,
+      "SR": 0.29,
+      "RMSE": 8.000501951064008,
+      "mean_matches": 640.58,
+      "mean_runtime_ms": 11.20172640949022
+    },
+    "optical-infrared": {
+      "num_pairs": 100,
+      "NCM": 78.13,
+      "Pre": 0.07612318825145276,
+      "SR": 0.54,
+      "RMSE": 6.32273240049943,
+      "mean_matches": 795.88,
+      "mean_runtime_ms": 11.761455243104137
+    },
+    "optical-map": {
+      "num_pairs": 100,
+      "NCM": 3.28,
+      "Pre": 0.007349759814421608,
+      "SR": 0.04,
+      "RMSE": 9.72792118531141,
+      "mean_matches": 419.97,
+      "mean_runtime_ms": 11.530640390701592
+    },
+    "optical-optical": {
+      "num_pairs": 100,
+      "NCM": 46.83,
+      "Pre": 0.05358240109757473,
+      "SR": 0.59,
+      "RMSE": 6.0083678321574805,
+      "mean_matches": 825.99,
+      "mean_runtime_ms": 14.587976068723947
+    },
+    "optical-sar": {
+      "num_pairs": 100,
+      "NCM": 10.84,
+      "Pre": 0.015051437074229821,
+      "SR": 0.12,
+      "RMSE": 9.18140864778653,
+      "mean_matches": 671.71,
+      "mean_runtime_ms": 12.130029542604461
+    },
+    "optical_day-optical_night": {
+      "num_pairs": 100,
+      "NCM": 12.05,
+      "Pre": 0.016194327971059092,
+      "SR": 0.17,
+      "RMSE": 8.842469232000697,
+      "mean_matches": 673.56,
+      "mean_runtime_ms": 11.570195718668401
+    }
+  },
+  "optical_reference_precision": 0.05358240109757473,
+  "cross_modal_retention": {
+    "optical-depth": 0.45643100780340595,
+    "optical-infrared": 1.4206751973064955,
+    "optical-map": 0.1371674218375831,
+    "optical-sar": 0.2809026241063894,
+    "optical_day-optical_night": 0.3022322187758788
+  },
+  "slim_coarse_complementarity": {
+    "overall": {
+      "r0": {
+        "both_correct": 10075,
+        "physical_only": 16245,
+        "slim_only": 154686,
+        "both_wrong": 1289390,
+        "CRR": 0.01244222160098343,
+        "num_correspondences": 1470396
+      },
+      "r1": {
+        "both_correct": 31298,
+        "physical_only": 30815,
+        "slim_only": 310052,
+        "both_wrong": 1098231,
+        "CRR": 0.02729295352005144,
+        "num_correspondences": 1470396
+      }
+    },
+    "optical-depth": {
+      "r0": {
+        "both_correct": 1063,
+        "physical_only": 1875,
+        "slim_only": 26053,
+        "both_wrong": 213093,
+        "CRR": 0.008722228424695768,
+        "num_correspondences": 242084
+      },
+      "r1": {
+        "both_correct": 3925,
+        "physical_only": 3634,
+        "slim_only": 59610,
+        "both_wrong": 174915,
+        "CRR": 0.020352956331315213,
+        "num_correspondences": 242084
+      }
+    },
+    "optical-infrared": {
+      "r0": {
+        "both_correct": 2968,
+        "physical_only": 8031,
+        "slim_only": 27338,
+        "both_wrong": 206811,
+        "CRR": 0.037380959030357194,
+        "num_correspondences": 245148
+      },
+      "r1": {
+        "both_correct": 9654,
+        "physical_only": 12224,
+        "slim_only": 55118,
+        "both_wrong": 168152,
+        "CRR": 0.06776954805517364,
+        "num_correspondences": 245148
+      }
+    },
+    "optical-map": {
+      "r0": {
+        "both_correct": 304,
+        "physical_only": 496,
+        "slim_only": 19591,
+        "both_wrong": 229334,
+        "CRR": 0.002158116868990123,
+        "num_correspondences": 249725
+      },
+      "r1": {
+        "both_correct": 1144,
+        "physical_only": 1355,
+        "slim_only": 37523,
+        "both_wrong": 209703,
+        "CRR": 0.006420036198580485,
+        "num_correspondences": 249725
+      }
+    },
+    "optical-optical": {
+      "r0": {
+        "both_correct": 4243,
+        "physical_only": 2889,
+        "slim_only": 40966,
+        "both_wrong": 193703,
+        "CRR": 0.01469540978269716,
+        "num_correspondences": 241801
+      },
+      "r1": {
+        "both_correct": 11041,
+        "physical_only": 5468,
+        "slim_only": 71835,
+        "both_wrong": 153457,
+        "CRR": 0.034406166430706306,
+        "num_correspondences": 241801
+      }
+    },
+    "optical-sar": {
+      "r0": {
+        "both_correct": 338,
+        "physical_only": 1766,
+        "slim_only": 15673,
+        "both_wrong": 231103,
+        "CRR": 0.007583662917777807,
+        "num_correspondences": 248880
+      },
+      "r1": {
+        "both_correct": 2183,
+        "physical_only": 5188,
+        "slim_only": 42515,
+        "both_wrong": 198994,
+        "CRR": 0.02540870399937311,
+        "num_correspondences": 248880
+      }
+    },
+    "optical_day-optical_night": {
+      "r0": {
+        "both_correct": 1159,
+        "physical_only": 1188,
+        "slim_only": 25065,
+        "both_wrong": 215346,
+        "CRR": 0.005486436310233035,
+        "num_correspondences": 242758
+      },
+      "r1": {
+        "both_correct": 3351,
+        "physical_only": 2946,
+        "slim_only": 43451,
+        "both_wrong": 193010,
+        "CRR": 0.01503398722162118,
+        "num_correspondences": 242758
+      }
+    }
+  },
+  "checkpoint_hparams": {
+    "model_name": "physical_full",
+    "similarity_mode": "full",
+    "learning_rate": 0.0001,
+    "weight_decay": 0.01,
+    "max_epochs": 20,
+    "coarse_scale": 8,
+    "chunk_size": 256
+  }
+}
