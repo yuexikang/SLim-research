@@ -930,7 +930,7 @@ GPU 3、RTX 4090、512x512、BF16、chunked PP 的 smoke 结果：
 
 三种配置均低于 22 GiB 安全线且参数、loss、checkpoint 无 NaN/Inf。双卡 DDP 未出现 unused parameter。正式单卡实验默认使用 `batch_size=2`、`accumulate_grad_batches=4`；双卡使用 `batch_size=2`、`accumulate_grad_batches=2`；验证 batch 固定为 1。
 
-训练集不再在单个 epoch 内将每张基础影像展开为五对。扰动类型由 `seed + epoch + row index` 确定，同一实验和恢复训练可复现，不同 epoch 会重新选择。验证与测试仍完整展开五种扰动，保证分类型指标不变。
+训练集不再在单个 epoch 内将每张基础影像展开为五对。扰动类型由 `seed + epoch + row index` 确定，同一实验和恢复训练可复现，不同 epoch 会重新选择。训练期验证为每张基础影像固定一种扰动，用于快速且可比地选择 best；训练结束后自动加载 best checkpoint，将验证集完整展开五种扰动一次，测试始终使用完整协议。
 
 ---
 
@@ -972,13 +972,25 @@ logs/tb_logs/physical_v0/tiny_cnn_ratio30_gpu3_bs8_seed66/selected_train_rows.js
 
 训练使用 `--train_one_variant_per_row`：每张基础影像每个 epoch 只在线生成一种扰动，因此正式训练为 `16,337 pairs/epoch`，不是五倍展开后的 81,685 对。扰动由 `seed + epoch + row index` 确定，恢复训练和不同模型间可复现。
 
-验证索引包含 5,164 张基础影像，验证阶段仍展开五种扰动：
+验证索引包含 5,164 张基础影像。训练期间使用 `--val_one_variant_per_row`，由 `seed + row index` 为每张影像固定选择一种扰动，因此每个 epoch 只验证：
+
+```text
+5,164 validation pairs/epoch
+```
+
+该选择不随 epoch 改变，使 `val/all_r0` 能公平比较并用于保存 best checkpoint。快速验证样本严格对应完整验证集合中的一项，图像和 Homography 完全一致。
+
+训练结束后，`--full_validate_best_at_end` 自动加载 `val/all_r0` 最优权重并将五种扰动完整展开一次：
 
 ```text
 5,164 x 5 = 25,820 validation pairs
 ```
 
-验证集不受训练比例影响，也不能在正式结果中使用 pilot 的 `--max_val_rows 100`。
+验证集不受训练比例影响，也不能在正式结果中使用 pilot 的 `--max_val_rows 100`。训练期指标记录为 `val/*`，最终完整验证记录为 `full_val/*`，同时保存：
+
+```text
+<experiment_dir>/paper_logs/full_validation_best.json
+```
 
 ### 23.3 Batch、梯度累积与显存结论
 
@@ -1075,6 +1087,8 @@ CUDA_VISIBLE_DEVICES=3 MPLCONFIGDIR=/tmp/matplotlib \
   --selected_train_rows logs/tb_logs/physical_v0/tiny_cnn_ratio30_gpu3_bs8_seed66/selected_train_rows.jsonl \
   --train_data_ratio 0.3 \
   --train_one_variant_per_row \
+  --val_one_variant_per_row \
+  --full_validate_best_at_end \
   --task_name physical_v1_optical_single_ratio30 \
   --run_name physical_v1_core_optical_single_ratio30_img512_1gpu3_bs2_ebs8_seed66_ep20_chunked \
   --batch_size 2 \

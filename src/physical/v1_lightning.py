@@ -56,6 +56,7 @@ class PhysicalV1Module(pl.LightningModule):
         self.branch_loss_fn.log_temperature.requires_grad_(False)
         self.parameter_count = count_trainable_parameters(self.encoder)
         self.validation_accumulator = defaultdict(float)
+        self.validation_log_prefix = "val"
         self.train_epoch_started = None
         self.train_samples = 0
 
@@ -220,6 +221,13 @@ class PhysicalV1Module(pl.LightningModule):
 
     def on_validation_epoch_start(self):
         self.validation_accumulator.clear()
+        data_module = self.trainer.datamodule
+        self.validation_log_prefix = (
+            "full_val"
+            if data_module is not None
+            and getattr(data_module, "full_validation_enabled", False)
+            else "val"
+        )
 
     def _accumulate_descriptor_stats(self, prefix, descriptor0, descriptor1, correspondences, batch):
         stats = descriptor_statistics(
@@ -297,6 +305,7 @@ class PhysicalV1Module(pl.LightningModule):
         return float(tensor.cpu())
 
     def on_validation_epoch_end(self):
+        log_prefix = self.validation_log_prefix
         reduced = {
             key: self._distributed_sum(value)
             for key, value in self.validation_accumulator.items()
@@ -304,13 +313,13 @@ class PhysicalV1Module(pl.LightningModule):
         loss_count = max(reduced.get("loss/count", 0.0), 1.0)
         for name in ("total", "fused", "orientation", "branch"):
             self.log(
-                f"val/loss_{name}",
+                f"{log_prefix}/loss_{name}",
                 reduced.get(f"loss/{name}_sum", 0.0) / loss_count,
                 sync_dist=True,
             )
         for branch_name in self.active_branches:
             self.log(
-                f"val/loss_branch_{branch_name}",
+                f"{log_prefix}/loss_branch_{branch_name}",
                 reduced.get(f"loss/branch_{branch_name}_sum", 0.0) / loss_count,
                 sync_dist=True,
             )
@@ -331,7 +340,9 @@ class PhysicalV1Module(pl.LightningModule):
                     "entropy": reduced[base + "entropy"] / count,
                     "normalized_entropy": reduced[base + "normalized_entropy"] / count,
                 }
-                output_prefix = "val" if prefix == "fused" else f"val/{prefix}"
+                output_prefix = (
+                    log_prefix if prefix == "fused" else f"{log_prefix}/{prefix}"
+                )
                 for name, value in values.items():
                     show = prefix == "fused" and variant == "all" and name in {"r0", "r1"}
                     self.log(
@@ -344,14 +355,14 @@ class PhysicalV1Module(pl.LightningModule):
         diagnostic_count = max(reduced.get("diag/count", 0.0), 1.0)
         for gate_name in ("scale_weights", "expert_weights"):
             self.log(
-                f"val/{gate_name}_entropy",
+                f"{log_prefix}/{gate_name}_entropy",
                 reduced.get(f"diag/{gate_name}/entropy_sum", 0.0) / diagnostic_count,
                 sync_dist=True,
             )
             for index in range(3):
                 for statistic in ("mean", "std"):
                     self.log(
-                        f"val/{gate_name}_{index}_{statistic}",
+                        f"{log_prefix}/{gate_name}_{index}_{statistic}",
                         reduced.get(
                             f"diag/{gate_name}/{index}_{statistic}_sum", 0.0
                         )
@@ -360,7 +371,7 @@ class PhysicalV1Module(pl.LightningModule):
                     )
         for statistic in ("mean", "q25", "q50", "q75", "low"):
             self.log(
-                f"val/confidence_{statistic}",
+                f"{log_prefix}/confidence_{statistic}",
                 reduced.get(f"diag/confidence/{statistic}_sum", 0.0)
                 / diagnostic_count,
                 sync_dist=True,

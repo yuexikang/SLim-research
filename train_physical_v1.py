@@ -82,6 +82,18 @@ def parse_args():
         default=True,
         help="Sample one deterministic random perturbation per base image and epoch.",
     )
+    parser.add_argument(
+        "--val_one_variant_per_row",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Use one fixed deterministic perturbation per validation image during training.",
+    )
+    parser.add_argument(
+        "--full_validate_best_at_end",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Run all validation perturbations once with the best checkpoint after training.",
+    )
     parser.add_argument("--similarity_mode", choices=["full", "chunked"], default="chunked")
     parser.add_argument("--chunk_size", type=int, default=256)
     parser.add_argument("--seed", type=int, default=66)
@@ -155,7 +167,8 @@ def save_metadata(experiment_dir, args, device_count, accumulation, parameter_co
             "parameter_counts": parameter_counts,
             "selected_base_rows": len(data_module.selected_indices),
             "train_pairs_per_epoch": len(data_module.train_dataset),
-            "val_pairs": len(data_module.val_dataset),
+            "val_pairs_during_training": len(data_module.val_dataset),
+            "full_val_pairs": len(data_module.full_val_dataset),
         }
     )
     (paper_dir / "config.json").write_text(
@@ -247,6 +260,7 @@ def main():
         seed=args.seed,
         selected_train_rows=selected_rows,
         train_one_variant_per_row=args.train_one_variant_per_row,
+        val_one_variant_per_row=args.val_one_variant_per_row,
     )
     data_module.setup("fit")
     save_metadata(
@@ -271,22 +285,25 @@ def main():
         "accumulate_grad_batches": accumulation,
         "selected_base_rows": len(data_module.selected_indices),
         "train_pairs_per_epoch": len(data_module.train_dataset),
+        "val_pairs_during_training": len(data_module.val_dataset),
+        "full_val_pairs": len(data_module.full_val_dataset),
     }
     for logger in loggers:
         logger.log_hyperparams(hyperparameters)
 
     checkpoint_dir = experiment_dir / "checkpoints"
+    best_checkpoint = ModelCheckpoint(
+        dirpath=str(checkpoint_dir),
+        filename="best-{epoch:02d}",
+        monitor="val/all_r0",
+        mode="max",
+        save_top_k=1,
+        save_last=True,
+        auto_insert_metric_name=False,
+        verbose=True,
+    )
     callbacks = [
-        ModelCheckpoint(
-            dirpath=str(checkpoint_dir),
-            filename="best-{epoch:02d}",
-            monitor="val/all_r0",
-            mode="max",
-            save_top_k=1,
-            save_last=True,
-            auto_insert_metric_name=False,
-            verbose=True,
-        ),
+        best_checkpoint,
         LearningRateMonitor(logging_interval="epoch"),
     ]
     if args.save_every_n_epochs > 0:
@@ -323,9 +340,47 @@ def main():
         f"Model={args.model}, parameters={parameter_counts[args.model]:,}, "
         f"selected rows={len(data_module.selected_indices):,}, "
         f"pairs/epoch={len(data_module.train_dataset):,}, "
-        f"val pairs={len(data_module.val_dataset):,}, accumulation={accumulation}"
+        f"val pairs/epoch={len(data_module.val_dataset):,}, "
+        f"full val pairs={len(data_module.full_val_dataset):,}, "
+        f"accumulation={accumulation}"
     )
     trainer.fit(model, datamodule=data_module, ckpt_path=args.resume_ckpt_path)
+    if not args.full_validate_best_at_end:
+        return
+
+    best_path = best_checkpoint.best_model_path
+    if not best_path:
+        raise RuntimeError(
+            "Full validation was requested, but no best checkpoint was produced. "
+            "Ensure validation is enabled and val/all_r0 is logged."
+        )
+    data_module.enable_full_validation()
+    trainer.limit_val_batches = 1.0
+    if trainer.is_global_zero:
+        print(
+            f"Running full validation with best checkpoint: {best_path} "
+            f"({len(data_module.full_val_dataset):,} pairs)"
+        )
+    validation_results = trainer.validate(
+        model=model,
+        datamodule=data_module,
+        ckpt_path=best_path,
+        verbose=True,
+    )
+    if trainer.is_global_zero:
+        metrics = validation_results[0] if validation_results else {}
+        summary = {
+            "best_checkpoint": str(Path(best_path).resolve()),
+            "selection_metric": "val/all_r0",
+            "val_pairs_during_training": len(data_module.val_dataset),
+            "full_val_pairs": len(data_module.full_val_dataset),
+            "metrics": {name: float(value) for name, value in metrics.items()},
+        }
+        output = experiment_dir / "paper_logs" / "full_validation_best.json"
+        output.write_text(
+            json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        print(f"Full validation summary: {output}")
 
 
 if __name__ == "__main__":

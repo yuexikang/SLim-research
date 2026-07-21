@@ -7,7 +7,7 @@ import torch
 from torch.nn import functional as F
 
 from src.datasets.remote_sensing import RemoteSensingHomographyDataset
-from src.physical.data import stratified_manifest_indices
+from src.physical.data import PhysicalV0DataModule, stratified_manifest_indices
 from src.physical.matching import PPMatchingLoss
 from src.physical.models import (
     FixedQuadratureOrientationBank,
@@ -141,6 +141,105 @@ def test_one_variant_per_row_is_deterministic_and_changes_across_epochs(tmp_path
         homographies.append(item["H_0to1"])
     assert len(variants) > 1
     assert any(not torch.equal(homographies[0], value) for value in homographies[1:])
+
+
+def test_validation_one_variant_is_fixed_and_matches_full_validation(tmp_path):
+    image_path = tmp_path / "image.png"
+    cv2.imwrite(str(image_path), np.arange(64 * 64, dtype=np.uint8).reshape(64, 64))
+    manifest = tmp_path / "manifest.jsonl"
+    rows = [
+        {
+            "id": f"sample-{index}",
+            "dataset": "test",
+            "subset": "test",
+            "split": "val",
+            "mode": "single_synth",
+            "image": str(image_path),
+        }
+        for index in range(4)
+    ]
+    manifest.write_text(
+        "".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8"
+    )
+    fast = RemoteSensingHomographyDataset(
+        manifest,
+        image_size=64,
+        mode="val",
+        seed=66,
+        one_variant_per_row=True,
+    )
+    full = RemoteSensingHomographyDataset(
+        manifest,
+        image_size=64,
+        mode="val",
+        seed=66,
+    )
+    assert len(fast) == len(rows)
+    assert len(full) == len(rows) * len(full.aug_variants)
+
+    first_pass = [fast[index] for index in range(len(fast))]
+    fast.set_epoch(9)
+    second_pass = [fast[index] for index in range(len(fast))]
+    for row_index, (first, second) in enumerate(zip(first_pass, second_pass)):
+        assert first["remote_aug_variant"] == second["remote_aug_variant"]
+        assert torch.equal(first["H_0to1"], second["H_0to1"])
+        variant_index = full.aug_variants.index(first["remote_aug_variant"])
+        full_item = full[row_index * len(full.aug_variants) + variant_index]
+        assert torch.equal(first["image0"], full_item["image0"])
+        assert torch.equal(first["image1"], full_item["image1"])
+        assert torch.equal(first["H_0to1"], full_item["H_0to1"])
+
+
+def test_data_module_switches_from_fast_to_full_validation(tmp_path):
+    image_path = tmp_path / "image.png"
+    cv2.imwrite(str(image_path), np.zeros((64, 64), dtype=np.uint8))
+    train_manifest = tmp_path / "train.jsonl"
+    val_manifest = tmp_path / "val.jsonl"
+    train_manifest.write_text(
+        json.dumps(
+            {
+                "id": "train-0",
+                "dataset": "test",
+                "subset": "train",
+                "split": "train",
+                "mode": "single_synth",
+                "image": str(image_path),
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    val_rows = [
+        {
+            "id": f"val-{index}",
+            "dataset": "test",
+            "subset": "val",
+            "split": "val",
+            "mode": "single_synth",
+            "image": str(image_path),
+        }
+        for index in range(3)
+    ]
+    val_manifest.write_text(
+        "".join(json.dumps(row) + "\n" for row in val_rows), encoding="utf-8"
+    )
+    data_module = PhysicalV0DataModule(
+        train_manifest=train_manifest,
+        val_manifest=val_manifest,
+        experiment_dir=tmp_path / "experiment",
+        image_size=64,
+        batch_size=1,
+        val_batch_size=1,
+        num_workers=0,
+        train_data_ratio=1.0,
+        val_one_variant_per_row=True,
+    )
+    data_module.setup("fit")
+    assert len(data_module.val_dataset) == len(val_rows)
+    assert len(data_module.full_val_dataset) == len(val_rows) * 5
+    assert len(data_module.val_dataloader().dataset) == len(val_rows)
+    data_module.enable_full_validation()
+    assert len(data_module.val_dataloader().dataset) == len(val_rows) * 5
 
 
 def test_full_and_chunked_loss_and_gradients_match():
