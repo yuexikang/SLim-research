@@ -100,6 +100,49 @@ def test_deterministic_train_homography_depends_on_epoch(tmp_path):
     assert not torch.equal(first, next_epoch)
 
 
+def test_one_variant_per_row_is_deterministic_and_changes_across_epochs(tmp_path):
+    image_path = tmp_path / "image.png"
+    cv2.imwrite(str(image_path), np.arange(64 * 64, dtype=np.uint8).reshape(64, 64))
+    manifest = tmp_path / "manifest.jsonl"
+    manifest.write_text(
+        json.dumps(
+            {
+                "id": "sample",
+                "dataset": "test",
+                "subset": "test",
+                "split": "train",
+                "mode": "single_synth",
+                "image": str(image_path),
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    dataset = RemoteSensingHomographyDataset(
+        manifest,
+        image_size=64,
+        mode="train",
+        seed=66,
+        deterministic_train=True,
+        one_variant_per_row=True,
+    )
+    assert len(dataset) == 1
+    first = dataset[0]
+    repeated = dataset[0]
+    assert first["remote_aug_variant"] == repeated["remote_aug_variant"]
+    assert torch.equal(first["H_0to1"], repeated["H_0to1"])
+
+    variants = set()
+    homographies = []
+    for epoch in range(10):
+        dataset.set_epoch(epoch)
+        item = dataset[0]
+        variants.add(item["remote_aug_variant"])
+        homographies.append(item["H_0to1"])
+    assert len(variants) > 1
+    assert any(not torch.equal(homographies[0], value) for value in homographies[1:])
+
+
 def test_full_and_chunked_loss_and_gradients_match():
     torch.manual_seed(7)
     raw0 = torch.randn(2, 16, 8, 8)

@@ -1,0 +1,164 @@
+{
+  "evaluation": "multimodal",
+  "protocol": {
+    "matching": "coarse cosine mutual-nearest-neighbor; no RANSAC",
+    "correct": "original-coordinate reprojection error <= 5.0px",
+    "success": "NCM >= 20",
+    "failed_rmse": 10.0
+  },
+  "model": "physical_full",
+  "checkpoint": "logs/tb_logs/physical_v0/physical_full_ratio100_gpu1_bs8_seed66_resume/checkpoints/best-18-0.9971.ckpt",
+  "manifest": "data/remote_archive/manifests/test_SwinMatcher_proposed_gt.jsonl",
+  "image_size": 512,
+  "trainable_parameters": 44899,
+  "overall": {
+    "num_pairs": 400,
+    "NCM": 35.065,
+    "Pre": 0.0431533722738474,
+    "SR": 0.4225,
+    "RMSE": 7.105434110581108,
+    "mean_matches": 629.2675,
+    "mean_runtime_ms": 6.473186993098352
+  },
+  "by_modality_pair": {
+    "optical-lidar": {
+      "num_pairs": 50,
+      "NCM": 10.6,
+      "Pre": 0.014175977230081587,
+      "SR": 0.18,
+      "RMSE": 8.746186674658874,
+      "mean_matches": 736.42,
+      "mean_runtime_ms": 5.864810114726424
+    },
+    "optical-map": {
+      "num_pairs": 100,
+      "NCM": 0.11,
+      "Pre": 0.0003363317980836733,
+      "SR": 0.0,
+      "RMSE": 10.0,
+      "mean_matches": 275.69,
+      "mean_runtime_ms": 5.871282359585166
+    },
+    "optical-sar": {
+      "num_pairs": 70,
+      "NCM": 99.52857142857142,
+      "Pre": 0.10592345813710845,
+      "SR": 0.8428571428571429,
+      "RMSE": 4.215870042392833,
+      "mean_matches": 893.8285714285714,
+      "mean_runtime_ms": 5.5154673114884645
+    },
+    "sar-lidar": {
+      "num_pairs": 180,
+      "NCM": 36.21111111111111,
+      "Pre": 0.05057930443682733,
+      "SR": 0.5611111111111111,
+      "RMSE": 6.165296708511117,
+      "mean_matches": 693.05,
+      "mean_runtime_ms": 7.349018576335059
+    }
+  },
+  "optical_reference_precision": null,
+  "cross_modal_retention": {},
+  "slim_coarse_complementarity": {
+    "overall": {
+      "r0": {
+        "both_correct": 8948,
+        "physical_only": 15046,
+        "slim_only": 106002,
+        "both_wrong": 939029,
+        "CRR": 0.01577024867017792,
+        "num_correspondences": 1069025
+      },
+      "r1": {
+        "both_correct": 25561,
+        "physical_only": 26293,
+        "slim_only": 216795,
+        "both_wrong": 800376,
+        "CRR": 0.031805958612213595,
+        "num_correspondences": 1069025
+      }
+    },
+    "optical-lidar": {
+      "r0": {
+        "both_correct": 294,
+        "physical_only": 979,
+        "slim_only": 8036,
+        "both_wrong": 125311,
+        "CRR": 0.007751999366537335,
+        "num_correspondences": 134620
+      },
+      "r1": {
+        "both_correct": 1065,
+        "physical_only": 2324,
+        "slim_only": 17984,
+        "both_wrong": 113247,
+        "CRR": 0.020108850836282458,
+        "num_correspondences": 134620
+      }
+    },
+    "optical-map": {
+      "r0": {
+        "both_correct": 7,
+        "physical_only": 57,
+        "slim_only": 11823,
+        "both_wrong": 235703,
+        "CRR": 0.00024177129284017645,
+        "num_correspondences": 247590
+      },
+      "r1": {
+        "both_correct": 71,
+        "physical_only": 355,
+        "slim_only": 32570,
+        "both_wrong": 214594,
+        "CRR": 0.0016515545548013715,
+        "num_correspondences": 247590
+      }
+    },
+    "optical-sar": {
+      "r0": {
+        "both_correct": 4094,
+        "physical_only": 6897,
+        "slim_only": 19536,
+        "both_wrong": 162458,
+        "CRR": 0.040725104071329454,
+        "num_correspondences": 192985
+      },
+      "r1": {
+        "both_correct": 11164,
+        "physical_only": 11084,
+        "slim_only": 40196,
+        "both_wrong": 130541,
+        "CRR": 0.0782630185348632,
+        "num_correspondences": 192985
+      }
+    },
+    "sar-lidar": {
+      "r0": {
+        "both_correct": 4553,
+        "physical_only": 7113,
+        "slim_only": 66607,
+        "both_wrong": 415557,
+        "CRR": 0.01682873163460856,
+        "num_correspondences": 493830
+      },
+      "r1": {
+        "both_correct": 13261,
+        "physical_only": 12530,
+        "slim_only": 126045,
+        "both_wrong": 341994,
+        "CRR": 0.03534316435558665,
+        "num_correspondences": 493830
+      }
+    }
+  },
+  "checkpoint_hparams": {
+    "model_name": "physical_full",
+    "similarity_mode": "full",
+    "learning_rate": 0.0001,
+    "weight_decay": 0.01,
+    "max_epochs": 20,
+    "coarse_scale": 8,
+    "chunk_size": 256
+  }
+}

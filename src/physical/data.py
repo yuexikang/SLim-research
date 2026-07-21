@@ -40,6 +40,29 @@ def stratified_manifest_indices(rows, ratio, seed, max_rows=0):
     return sorted(selected)
 
 
+def manifest_indices_from_selected_rows(rows, selected_rows):
+    available = defaultdict(list)
+    for index, row in enumerate(rows):
+        signature = json.dumps(row, ensure_ascii=False, sort_keys=True)
+        available[signature].append(index)
+    selected_indices = []
+    missing = []
+    for row in selected_rows:
+        signature = json.dumps(row, ensure_ascii=False, sort_keys=True)
+        candidates = available.get(signature)
+        if not candidates:
+            missing.append(row.get("id", signature[:120]))
+            continue
+        selected_indices.append(candidates.pop(0))
+    if missing:
+        preview = ", ".join(str(value) for value in missing[:5])
+        raise ValueError(
+            f"{len(missing)} selected rows are absent from the training manifest. "
+            f"First missing rows: {preview}"
+        )
+    return sorted(selected_indices)
+
+
 class PhysicalV0DataModule(pl.LightningDataModule):
     def __init__(
         self,
@@ -55,6 +78,9 @@ class PhysicalV0DataModule(pl.LightningDataModule):
         max_val_rows=0,
         homography_difficulty=0.3,
         seed=66,
+        selected_train_rows=None,
+        train_one_variant_per_row=False,
+        val_one_variant_per_row=False,
     ):
         super().__init__()
         self.train_manifest = Path(train_manifest)
@@ -69,9 +95,16 @@ class PhysicalV0DataModule(pl.LightningDataModule):
         self.max_val_rows = int(max_val_rows)
         self.homography_difficulty = float(homography_difficulty)
         self.seed = int(seed)
+        self.selected_train_rows = (
+            Path(selected_train_rows) if selected_train_rows is not None else None
+        )
+        self.train_one_variant_per_row = bool(train_one_variant_per_row)
+        self.val_one_variant_per_row = bool(val_one_variant_per_row)
         self.variants = list(RemoteSensingHomographyDataset.DEFAULT_AUG_VARIANTS)
         self.train_dataset = None
         self.val_dataset = None
+        self.full_val_dataset = None
+        self.full_validation_enabled = False
         self.selected_indices = None
 
     def setup(self, stage=None):
@@ -80,12 +113,20 @@ class PhysicalV0DataModule(pl.LightningDataModule):
         rows = RemoteSensingHomographyDataset.load_manifest_rows(
             self.train_manifest, split="train"
         )
-        self.selected_indices = stratified_manifest_indices(
-            rows,
-            ratio=self.train_data_ratio,
-            seed=self.seed,
-            max_rows=self.max_train_rows,
-        )
+        if self.selected_train_rows is not None:
+            selected_rows = RemoteSensingHomographyDataset.load_manifest_rows(
+                self.selected_train_rows, split="all"
+            )
+            self.selected_indices = manifest_indices_from_selected_rows(rows, selected_rows)
+            if self.max_train_rows > 0:
+                self.selected_indices = self.selected_indices[: self.max_train_rows]
+        else:
+            self.selected_indices = stratified_manifest_indices(
+                rows,
+                ratio=self.train_data_ratio,
+                seed=self.seed,
+                max_rows=self.max_train_rows,
+            )
         self.train_dataset = RemoteSensingHomographyDataset(
             manifest_path=self.train_manifest,
             image_size=self.image_size,
@@ -96,6 +137,7 @@ class PhysicalV0DataModule(pl.LightningDataModule):
             aug_variants=self.variants,
             seed=self.seed,
             deterministic_train=True,
+            one_variant_per_row=self.train_one_variant_per_row,
         )
         self.val_dataset = RemoteSensingHomographyDataset(
             manifest_path=self.val_manifest,
@@ -106,7 +148,21 @@ class PhysicalV0DataModule(pl.LightningDataModule):
             left_identity=True,
             aug_variants=self.variants,
             seed=self.seed,
+            one_variant_per_row=self.val_one_variant_per_row,
         )
+        if self.val_one_variant_per_row:
+            self.full_val_dataset = RemoteSensingHomographyDataset(
+                manifest_path=self.val_manifest,
+                image_size=self.image_size,
+                mode="val",
+                max_samples=self.max_val_rows,
+                homography_difficulty=self.homography_difficulty,
+                left_identity=True,
+                aug_variants=self.variants,
+                seed=self.seed,
+            )
+        else:
+            self.full_val_dataset = self.val_dataset
         self._save_selected_rows(rows)
 
     def _save_selected_rows(self, rows):
@@ -128,6 +184,20 @@ class PhysicalV0DataModule(pl.LightningDataModule):
         if self.train_dataset is not None:
             self.train_dataset.set_epoch(epoch)
 
+    def enable_full_validation(self):
+        if self.full_val_dataset is None:
+            raise RuntimeError("Data module must be set up before full validation.")
+        self.full_validation_enabled = True
+
+    def disable_full_validation(self):
+        self.full_validation_enabled = False
+
+    @property
+    def active_val_dataset(self):
+        if self.full_validation_enabled:
+            return self.full_val_dataset
+        return self.val_dataset
+
     def train_dataloader(self):
         return DataLoader(
             self.train_dataset,
@@ -140,7 +210,7 @@ class PhysicalV0DataModule(pl.LightningDataModule):
 
     def val_dataloader(self):
         return DataLoader(
-            self.val_dataset,
+            self.active_val_dataset,
             batch_size=self.val_batch_size,
             shuffle=False,
             num_workers=self.num_workers,

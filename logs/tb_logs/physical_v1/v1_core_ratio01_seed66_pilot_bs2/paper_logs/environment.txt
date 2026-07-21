@@ -1,0 +1,5 @@
+python: 3.10.20
+torch: 2.1.1+cu118
+pytorch_lightning: 2.3.3
+cuda_visible_devices: 0,3
+cuda_device_count: 2

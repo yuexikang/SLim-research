@@ -34,6 +34,7 @@ class RemoteSensingHomographyDataset(Dataset):
         row_indices=None,
         seed=0,
         deterministic_train=False,
+        one_variant_per_row=False,
     ):
         self.manifest_path = Path(manifest_path)
         self.image_size = int(image_size)
@@ -43,6 +44,11 @@ class RemoteSensingHomographyDataset(Dataset):
         self.aug_variants = self._parse_aug_variants(aug_variants)
         self.seed = int(seed)
         self.deterministic_train = bool(deterministic_train)
+        self.one_variant_per_row = bool(one_variant_per_row)
+        if self.one_variant_per_row and self.mode not in {"train", "val"}:
+            raise ValueError(
+                "one_variant_per_row is only supported for training or validation datasets."
+            )
         self.epoch = 0
 
         split_filter = mode if manifest_split is None else manifest_split
@@ -56,17 +62,31 @@ class RemoteSensingHomographyDataset(Dataset):
         self.rows = rows
 
     def __len__(self):
+        if self.one_variant_per_row:
+            return len(self.rows)
         return len(self.rows) * len(self.aug_variants)
 
     def set_epoch(self, epoch):
         self.epoch = int(epoch)
 
     def __getitem__(self, idx):
-        row_idx = idx // len(self.aug_variants)
-        variant_idx = idx % len(self.aug_variants)
+        if self.one_variant_per_row:
+            row_idx = idx
+            epoch_offset = self.epoch * 1000003 if self.mode == "train" else 0
+            variant_seed = (
+                self.seed + epoch_offset + row_idx * 9973 + 7919
+            ) % (2**32)
+            variant_rng = np.random.default_rng(variant_seed)
+            variant_idx = int(variant_rng.integers(0, len(self.aug_variants)))
+        else:
+            row_idx = idx // len(self.aug_variants)
+            variant_idx = idx % len(self.aug_variants)
         aug_variant = self.aug_variants[variant_idx]
         row = self.rows[row_idx]
-        rng = self._rng(idx)
+        rng_idx = idx
+        if self.one_variant_per_row and self.mode == "val":
+            rng_idx = row_idx * len(self.aug_variants) + variant_idx
+        rng = self._rng(rng_idx)
 
         if row["mode"] == "aligned_pairs":
             base0, _ = self._read_square_gray_with_transform(row["image0"])

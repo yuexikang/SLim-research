@@ -1,2 +1,0 @@
-index,id,modality_pair,matches,NCM,Pre,SR,RMSE,runtime_ms
-0,swinmatcher/proposed_test_dataset/scene1_SAR-LiDAR/000/01,sar-lidar,685,5,0.0072992700729927005,0,10.0,236.50237399851903
