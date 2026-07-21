@@ -15,9 +15,14 @@ def descriptor_statistics(
     variants=None,
     negative_radius=1,
     chunk_size=256,
+    scale_by_sqrt_dim=False,
 ):
     flat0 = flatten_descriptors(descriptor0)
     flat1 = flatten_descriptors(descriptor1)
+    if scale_by_sqrt_dim:
+        scale = flat0.shape[-1] ** 0.5
+        flat0 = flat0 / scale
+        flat1 = flat1 / scale
     b_ids, i_ids, j_ids = correspondences
     width = descriptor1.shape[-1]
     height = descriptor1.shape[-2]

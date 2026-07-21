@@ -85,11 +85,19 @@ def full_similarity(descriptor0, descriptor1, temperature):
 
 
 class PPMatchingLoss(nn.Module):
-    def __init__(self, gamma=2.0, positive_percent=0.9, temperature=0.05, chunk_size=256):
+    def __init__(
+        self,
+        gamma=2.0,
+        positive_percent=0.9,
+        temperature=0.05,
+        chunk_size=256,
+        stable_log=False,
+    ):
         super().__init__()
         self.gamma = float(gamma)
         self.positive_percent = float(positive_percent)
         self.chunk_size = int(chunk_size)
+        self.stable_log = bool(stable_log)
         self.log_temperature = nn.Parameter(torch.tensor(math.log(float(temperature))))
 
     @property
@@ -109,6 +117,10 @@ class PPMatchingLoss(nn.Module):
     def _focal(self, probability):
         return -(1.0 - probability).pow(self.gamma) * probability.clamp_min(1e-6).log()
 
+    def _focal_from_log_probability(self, log_probability):
+        probability = log_probability.exp()
+        return -(1.0 - probability).pow(self.gamma) * log_probability
+
     def _full_loss(self, flat0, flat1, positives):
         b_ids, i_ids, j_ids = positives
         similarity = torch.einsum("bic,bjc->bij", flat0, flat1) / self.temperature
@@ -121,13 +133,22 @@ class PPMatchingLoss(nn.Module):
             current_j = j_ids[mask]
             unique_i, inverse_i = current_i.unique(sorted=True, return_inverse=True)
             unique_j, inverse_j = current_j.unique(sorted=True, return_inverse=True)
-            row_probability = F.softmax(similarity[batch_index, unique_i], dim=1)
-            column_probability = F.softmax(similarity[batch_index, :, unique_j], dim=0)
-            probability = (
-                row_probability[inverse_i, current_j]
-                * column_probability[current_i, inverse_j]
-            )
-            losses[mask] = self._focal(probability)
+            if self.stable_log:
+                row_log = F.log_softmax(
+                    similarity[batch_index, unique_i].float(), dim=1
+                )[inverse_i, current_j]
+                column_log = F.log_softmax(
+                    similarity[batch_index, :, unique_j].float(), dim=0
+                )[current_i, inverse_j]
+                losses[mask] = self._focal_from_log_probability(row_log + column_log)
+            else:
+                row_probability = F.softmax(similarity[batch_index, unique_i], dim=1)
+                column_probability = F.softmax(similarity[batch_index, :, unique_j], dim=0)
+                probability = (
+                    row_probability[inverse_i, current_j]
+                    * column_probability[current_i, inverse_j]
+                )
+                losses[mask] = self._focal(probability)
         return losses.mean()
 
     def _chunk_loss(self, flat0, flat1, positives):
@@ -145,12 +166,18 @@ class PPMatchingLoss(nn.Module):
                 def compute(source, target, temperature, source_indices, target_indices):
                     row_logits = source[source_indices] @ target.transpose(0, 1) / temperature
                     column_logits = source @ target[target_indices].transpose(0, 1) / temperature
-                    row_probability = F.softmax(row_logits, dim=1)[
-                        torch.arange(source_indices.numel(), device=source.device), target_indices
-                    ]
+                    indices = torch.arange(source_indices.numel(), device=source.device)
+                    if self.stable_log:
+                        row_log = F.log_softmax(row_logits.float(), dim=1)[
+                            indices, target_indices
+                        ]
+                        column_log = F.log_softmax(column_logits.float(), dim=0)[
+                            source_indices, indices
+                        ]
+                        return self._focal_from_log_probability(row_log + column_log).sum()
+                    row_probability = F.softmax(row_logits, dim=1)[indices, target_indices]
                     column_probability = F.softmax(column_logits, dim=0)[
-                        source_indices,
-                        torch.arange(target_indices.numel(), device=source.device),
+                        source_indices, indices
                     ]
                     return self._focal(row_probability * column_probability).sum()
 

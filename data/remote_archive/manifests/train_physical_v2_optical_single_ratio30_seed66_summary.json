@@ -1,0 +1,32 @@
+{
+  "manifest": "data/remote_archive/manifests/train_physical_v2_optical_single_ratio30_seed66.jsonl",
+  "source": "logs/tb_logs/physical_v0/tiny_cnn_ratio30_gpu3_bs8_seed66/selected_train_rows.jsonl",
+  "selection_seed": 66,
+  "sha256": "7e5b4a2aa2b5e516fdd46ea927fe639da0ae98cfc8d205dae4be1abe42ef8864",
+  "rows": 16337,
+  "mode_counts": {
+    "single_synth": 16337
+  },
+  "split_counts": {
+    "train": 16337
+  },
+  "dataset_counts": {
+    "3MOS": 10488,
+    "GoogleEarth": 5400,
+    "jl1flight": 449
+  },
+  "subset_counts": {
+    "3MOS/ALOS": 714,
+    "3MOS/GF3": 3824,
+    "3MOS/RCM": 1020,
+    "3MOS/Radarsat": 2105,
+    "3MOS/SEN/SEN1_region1": 2418,
+    "3MOS/SEN/SEN1_region6": 407,
+    "GoogleEarth/training_data/Train": 5400,
+    "jl1flight/train/affine_pairs_train": 449
+  },
+  "duplicate_ids": 0,
+  "duplicate_image_paths": 0,
+  "missing_image_paths": 0,
+  "source_bytes_identical": true
+}

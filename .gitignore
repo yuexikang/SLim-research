@@ -32,3 +32,6 @@ outputs/***/visualizations/
 wandb/
 logs/tb_logs/**/wandb/
 *.wandb
+
+# Physical V2 experiment outputs remain local; source, manifests and docs are tracked.
+logs/tb_logs/physical_v2_optical_single_ratio30/
