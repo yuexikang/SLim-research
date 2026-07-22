@@ -15,7 +15,9 @@ from src.physical.v2_models import (
     PhysicalEncoderV2,
     SharedMASW,
     build_physical_v2_encoder,
+    safe_axial_angle,
 )
+from src.physical.v2_visualization import write_latest_feature_maps
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,6 +34,59 @@ def test_v2_manifest_is_exact_v1_selection():
     assert hashlib.sha256(target.read_bytes()).hexdigest() == summary["sha256"]
     assert len({row["id"] for row in rows}) == len(rows)
     assert len({row["image"] for row in rows}) == len(rows)
+
+
+def test_googleearth_single_split_is_pure_and_leakage_free():
+    manifest_dir = ROOT / "data/remote_archive/manifests"
+    train_path = manifest_dir / "train_GoogleEarth_single.jsonl"
+    val_path = manifest_dir / "val_GoogleEarth_single.jsonl"
+    summary = json.loads(
+        (manifest_dir / "GoogleEarth_single_split_summary.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    train_rows = [
+        json.loads(line)
+        for line in train_path.read_text(encoding="utf-8").splitlines()
+    ]
+    val_rows = [
+        json.loads(line) for line in val_path.read_text(encoding="utf-8").splitlines()
+    ]
+
+    assert len(train_rows) == summary["train_single_count"] == 16402
+    assert len(val_rows) == summary["val_single_count"] == 1822
+    assert summary["image_dimensions"] == {"1080x1080": 18224}
+    assert summary["minimum_image_side"] == 1080
+    assert hashlib.sha256(train_path.read_bytes()).hexdigest() == summary["train_sha256"]
+    assert hashlib.sha256(val_path.read_bytes()).hexdigest() == summary["val_sha256"]
+    assert all(
+        row["dataset"] == "GoogleEarth"
+        and row["mode"] == "single_synth"
+        and row["split"] == "train"
+        for row in train_rows
+    )
+    assert all(
+        row["dataset"] == "GoogleEarth"
+        and row["mode"] == "single_synth"
+        and row["split"] == "val"
+        for row in val_rows
+    )
+    train_pairs = {row["source_pair_id"] for row in train_rows}
+    val_pairs = {row["source_pair_id"] for row in val_rows}
+    assert not train_pairs & val_pairs
+    assert not {row["image"] for row in train_rows} & {
+        row["image"] for row in val_rows
+    }
+
+
+def test_general_optical_train_manifest_excludes_3mos():
+    path = ROOT / "data/remote_archive/manifests/train_optical_single_images.jsonl"
+    datasets = {
+        json.loads(line)["dataset"]
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    }
+    assert datasets == {"GoogleEarth", "jl1flight"}
 
 
 def test_shared_masw_returns_finite_unit_axial_direction():
@@ -92,6 +147,89 @@ def test_polar_reversal_fusion_is_strictly_invariant():
     forward = polar.reversal_fuse(descriptor0, descriptor_pi)
     reversed_order = polar.reversal_fuse(descriptor_pi, descriptor0)
     assert torch.equal(forward, reversed_order)
+
+
+def test_zero_axial_direction_has_finite_angle_gradient():
+    orientation = torch.zeros(2, 2, 4, 4, requires_grad=True)
+    angle = safe_axial_angle(orientation)
+    angle.sum().backward()
+    assert torch.equal(angle, torch.zeros_like(angle))
+    assert torch.isfinite(orientation.grad).all()
+    assert torch.count_nonzero(orientation.grad) == 0
+
+
+def test_flat_image_has_finite_gabor_parameter_gradients():
+    torch.manual_seed(10)
+    encoder = PhysicalEncoderV2(
+        enable_pair_transformer=False, enable_polar=False
+    )
+    image = torch.zeros(1, 1, 64, 64)
+    fields = encoder._physical_scale(image, scale_index=2)
+    loss = (
+        fields["odd"][:, :1].mean()
+        + fields["even"][:, :1].mean()
+        + fields["orientation_odd"][:, :1].mean()
+        + fields["orientation_even"][:, :1].mean()
+    )
+    loss.backward()
+    for parameter in encoder.gabor.physical_parameters():
+        assert parameter.grad is not None
+        assert torch.isfinite(parameter.grad).all()
+
+
+def test_latest_feature_visualization_overwrites_without_history(tmp_path):
+    torch.manual_seed(12)
+    batch = {
+        "image0": torch.rand(1, 1, 32, 32),
+        "image1": torch.rand(1, 1, 32, 32),
+        "remote_id": ["sample-0"],
+        "remote_aug_variant": ["yaw"],
+    }
+
+    def output():
+        return {
+            "physical": torch.randn(1, 96, 4, 4),
+            "delta": torch.randn(1, 192, 4, 4),
+            "enhanced": torch.randn(1, 192, 4, 4),
+            "orientation": F.normalize(torch.randn(1, 2, 4, 4), dim=1),
+            "reliability": torch.rand(1, 1, 4, 4),
+            "scale_weights": torch.softmax(torch.randn(1, 3, 4, 4), dim=1),
+            "oe_selector": torch.randint(0, 2, (1, 3, 4, 4)).float(),
+            "unary": [torch.randn(1, 96, 4, 4) for _ in range(6)],
+        }
+
+    base0 = torch.randn(1, 192, 4, 4)
+    base1 = torch.randn(1, 192, 4, 4)
+    output0, output1 = output(), output()
+    for step in (10, 11):
+        write_latest_feature_maps(
+            tmp_path,
+            batch,
+            base0,
+            base1,
+            output0,
+            output1,
+            epoch=1,
+            global_step=step,
+            batch_idx=step,
+            losses={"total": torch.tensor(float(step))},
+            gabor_parameters={"wavelength": [3.0, 6.0, 12.0]},
+        )
+
+    files = sorted(path.name for path in tmp_path.iterdir())
+    assert files == [
+        "descriptor_features.png",
+        "inputs.png",
+        "latest_step.json",
+        "odd_even_features.png",
+        "physical_gates.png",
+    ]
+    metadata = json.loads((tmp_path / "latest_step.json").read_text(encoding="utf-8"))
+    assert metadata["version"] == "Physical Encoder V2.1.2"
+    assert metadata["global_step"] == 11
+    assert metadata["batch_idx"] == 11
+    assert metadata["remote_id"] == "sample-0"
+    assert metadata["variant"] == "yaw"
 
 
 def test_v2_pair_exchange_and_output_contract():

@@ -1,3 +1,0 @@
-epoch,lr-AdamW/encoder,lr-AdamW/physical_filters,lr-AdamW/temperature,step,train/loss_step
-,9.939057285945933e-05,9.94459753267812e-06,9.939057285945933e-05,2043,
-1,,,,2049,2.7830421924591064

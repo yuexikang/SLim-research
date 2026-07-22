@@ -2,6 +2,15 @@
 
 > 状态：实现规范。V2只研究跨模态粗对应发现，不训练或评估Fine与Refinement；正式多模态测评另行设计。
 
+## 版本历史
+
+| 版本 | 定位 | 主要更新 | 文档 |
+|---|---|---|---|
+| V2 | 初始结构版本 | 三尺度物理前端、HIMO Odd/Even、MASW、Pair Transformer、Hard O/E、Polar Descriptor和SLiM残差Adapter | 本文档 |
+| V2.1 | 数值稳定性修订 | Pair Linear Attention改用FP32；加入Safe Axial Angle和非有限值三级诊断 | [版本更新记录](./Physical%20Encoder%20V2%20版本更新记录.md) |
+| V2.1.1 | 训练可观测性修订 | 每20 step覆盖输出关键物理特征图；固定文件名，不保留历史图片；模型参数拓扑不变 | [版本更新记录](./Physical%20Encoder%20V2%20版本更新记录.md) |
+| V2.1.2 | GoogleEarth数据修订 | 移除3MOS训练行；GoogleEarth按pair无泄漏划分并展开为单图；每图每epoch一种在线扰动 | [版本更新记录](./Physical%20Encoder%20V2%20版本更新记录.md) |
+
 ## 1. 研究边界
 
 Physical V2接收一对灰度图像，并在SLiM的`1/8`粗网格上产生物理残差：
@@ -264,8 +273,9 @@ $$L=L_{recover}+0.25L_{keep}+0.5L_{physical}+0.2L_{unary}+0.1L_{ori}.$$
 - 训练期验证每图固定一种扰动；最终best完整展开五种扰动；
 - Gabor参数：AdamW，LR `1e-5`，weight decay `0`；
 - 其他V2参数：AdamW，LR `1e-4`，weight decay `0.01`；
-- Cosine scheduler，20 epoch，BF16，有效batch 8，chunk 256；
-- 正式单卡micro batch为8、梯度累积为1；该设置在RTX 4090上峰值显存17.88 GiB；
+- Cosine scheduler，20 epoch，BF16，有效batch 6，chunk 256；
+- 正式单卡micro batch为6、不做梯度累积，有效batch为6；
+- Pair Linear Attention固定使用FP32，其他主路径保持BF16；该设置在RTX 4090上峰值分配显存约16.66 GiB；
 - best监控`val/enhanced_r0`，每2 epoch保存阶段权重。
 
 PP与Recovery均使用数学等价的稳定`log_softmax`实现。禁止先计算双向概率乘积再把它裁剪到`1e-6`：随机初始化时，4096个token的双向概率约为`1/4096^2`，旧式裁剪会令Physical和Unary分支落入零梯度区。V0/V1保留原有默认实现，稳定模式只由V2显式启用。
@@ -315,8 +325,10 @@ PP与Recovery均使用数学等价的稳定`log_softmax`实现。禁止先计算
 | V0/V1/V2 CPU测试 | 36 passed |
 | batch 1 BF16前后向 | 通过 |
 | batch 2 BF16前后向与恢复训练 | 通过 |
-| batch 4峰值显存 | 9.02 GiB |
-| batch 8峰值显存 | 17.88 GiB |
+| 旧BF16 Attention、batch 4峰值显存 | 9.02 GiB |
+| 旧BF16 Attention、batch 8峰值显存 | 17.88 GiB（长跑升至约21.8 GiB） |
+| FP32 Attention、batch 4峰值显存 | 11.19 GiB |
+| FP32 Attention、batch 6峰值显存 | 16.66 GiB（预留约7.3 GiB） |
 | 冻结SLiM梯度 | 始终为None |
 | V2预期参数梯度 | 全部存在且有限 |
 | checkpoint大小 | 约8.3 MiB，不重复保存冻结SLiM |
@@ -330,3 +342,17 @@ PP与Recovery均使用数学等价的稳定`log_softmax`实现。禁止先计算
 | 2 | 19.8615 | 13.7396 | 14.5569 | 0.86690 |
 
 pilot表明主物理loss能够持续下降，Adapter、Pair Transformer、Polar分支和解析Gabor参数均可反传。1%数据只用于流程与数值稳定性验收，不用于判断最终模型收益。
+
+正式训练首次使用BF16 Pair Linear Attention和batch 8时，在epoch 0约global step 699后出现持续NaN。该运行尚未完成epoch，因此没有可恢复checkpoint。修订内容：
+
+1. Pair Linear Attention的Q/K/V、线性注意力累积、分母归一化、输出投影和MLP固定使用FP32，输出再转回主路径dtype；
+2. 数值修复后先以micro batch 4、累积2完成跨epoch回归；随后按实验要求测试micro batch 6、不累积，并将正式有效batch设为6；
+3. 每个训练step检查各项loss和关键输出；每次反传检查所有V2梯度；每次优化器更新后检查参数；
+4. 首次非有限值立即停止，并在实验`paper_logs/nonfinite_failure.json`记录epoch、step、loss、输出、样本ID和扰动类型；
+5. 修订后完成120个连续训练batch压力测试，无NaN，loss保持有限并下降；
+6. 进一步使用163条基础影像（约1%）、micro batch 4、梯度累积2，完整运行3个epoch。三个epoch的训练总loss分别为21.6586、20.2852、19.6984，所有CSV数值均为有限值；峰值分配显存约11.20 GiB，并正常生成`best-02.ckpt`、`last.ckpt`和逐epoch阶段权重。
+7. micro batch 6完成2个训练step及2个验证step，loss、梯度和参数均为有限值，峰值分配/保留显存分别为16.66/17.87 GiB。正式训练据此使用batch 6。
+
+该微量数据回归测试只验证长于单epoch边界的数值稳定性、验证流程和checkpoint链路，不作为V2精度结论。
+
+batch 6正式训练在epoch 0、global step 927被非有限梯度保护主动终止。终止前总loss保持有限并由20.14降至约10，异常参数仅为`gabor.delta_lambda`、`gabor.delta_sigma`和`gabor.gamma_logits`。根因是弱纹理位置产生零方向向量后，V2直接执行`atan2(0, 0)`：前向值有限，但反向导数未定义，非有限梯度最终汇聚到解析Gabor参数。修订后，V2在方向向量模长小于阈值时回退到固定0度，并停止该位置的方向梯度；有效方向仍使用连续`atan2`。零方向CPU反向测试及BF16、batch 6 GPU前后向测试均通过。后续非有限梯度报告还会记录当前batch索引、样本ID和扰动类型。

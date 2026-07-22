@@ -1,0 +1,50 @@
+{
+  "duplicate_train_ids": 0,
+  "duplicate_train_images": 0,
+  "duplicate_val_ids": 0,
+  "duplicate_val_images": 0,
+  "image_dimensions": {
+    "1080x1080": 18224
+  },
+  "image_overlap": 0,
+  "minimum_image_side": 1080,
+  "missing_path_count": 0,
+  "pair_overlap": 0,
+  "seed": 66,
+  "source_manifest": "data/remote_archive/manifests/train_GoogleEarth.jsonl",
+  "source_pair_count": 9112,
+  "source_sha256": "eaf0e6ac2e13f487eeabe241482bbae9fd96c9fc066124b9b4828ef2ef383ba6",
+  "train_manifest": "data/remote_archive/manifests/train_GoogleEarth_single.jsonl",
+  "train_pair_count": 8201,
+  "train_sha256": "0063577c6618e8e91b5209ca7149be90e4651d617ea86281f0f2be8e33fd9308",
+  "train_single_count": 16402,
+  "train_source_modality_distribution": {
+    "optical_current": 7801,
+    "optical_past": 7801,
+    "optical_source": 400,
+    "optical_target": 400
+  },
+  "train_subset_distribution": {
+    "evaluation_data": 800,
+    "training_data/Train": 14586,
+    "training_data/Val": 1016
+  },
+  "unreadable_image_header_count": 0,
+  "val_manifest": "data/remote_archive/manifests/val_GoogleEarth_single.jsonl",
+  "val_pair_count": 911,
+  "val_ratio": 0.1,
+  "val_sha256": "62054ffa924e4429e209bb4abad7b77029681d07c508ed094c08bad64bb25595",
+  "val_single_count": 1822,
+  "val_source_modality_distribution": {
+    "optical_current": 867,
+    "optical_past": 867,
+    "optical_source": 44,
+    "optical_target": 44
+  },
+  "val_subset_distribution": {
+    "evaluation_data": 88,
+    "training_data/Train": 1620,
+    "training_data/Val": 114
+  },
+  "version": "Physical Encoder V2.1.2"
+}

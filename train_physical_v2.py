@@ -20,11 +20,12 @@ from utils.misc import setup_gpus
 
 
 DEFAULT_TRAIN_MANIFEST = Path(
-    "data/remote_archive/manifests/train_physical_v2_optical_single_ratio30_seed66.jsonl"
+    "data/remote_archive/manifests/train_GoogleEarth_single.jsonl"
 )
 DEFAULT_VAL_MANIFEST = Path(
-    "data/remote_archive/manifests/val_optical_single_images.jsonl"
+    "data/remote_archive/manifests/val_GoogleEarth_single.jsonl"
 )
+IMPLEMENTATION_VERSION = "2.1.2"
 
 
 def parse_limit(value):
@@ -53,14 +54,14 @@ def parse_args():
         "--train_data_ratio",
         type=float,
         default=1.0,
-        help="Fraction of the already-fixed 16,337-row V2 manifest to use.",
+        help="Fraction of the selected training manifest to use.",
     )
     parser.add_argument("--max_train_rows", type=int, default=0)
     parser.add_argument("--max_val_rows", type=int, default=0)
     parser.add_argument("--image_size", type=int, default=512)
-    parser.add_argument("--batch_size", type=int, default=2)
+    parser.add_argument("--batch_size", type=int, default=6)
     parser.add_argument("--val_batch_size", type=int, default=1)
-    parser.add_argument("--effective_batch_size", type=int, default=8)
+    parser.add_argument("--effective_batch_size", type=int, default=6)
     parser.add_argument("--accumulate_grad_batches", type=int, default=0)
     parser.add_argument("--num_workers", type=int, default=6)
     parser.add_argument("--max_epochs", type=int, default=20)
@@ -71,8 +72,14 @@ def parse_args():
     parser.add_argument("--chunk_size", type=int, default=256)
     parser.add_argument("--polar_chunk_size", type=int, default=1024)
     parser.add_argument("--gradient_log_interval", type=int, default=200)
+    parser.add_argument(
+        "--visualize_feature_maps",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
+    parser.add_argument("--feature_visualization_interval", type=int, default=20)
     parser.add_argument("--seed", type=int, default=66)
-    parser.add_argument("--task_name", default="physical_v2_optical_single_ratio30")
+    parser.add_argument("--task_name", default="physical_v2_googleearth_single")
     parser.add_argument("--run_name", default=None)
     parser.add_argument("--resume_ckpt_path", type=Path, default=None)
     parser.add_argument("--save_every_n_epochs", type=int, default=2)
@@ -131,7 +138,7 @@ def wandb_log_model(value):
 def build_run_name(args, device_count):
     subset = round(args.train_data_ratio * 100)
     return (
-        f"{args.model}_optical_fixed30_subset{subset}_img{args.image_size}_"
+        f"{args.model}_googleearth_subset{subset}_img{args.image_size}_"
         f"gpu{device_count}_bs{args.batch_size}_ebs{args.effective_batch_size}_"
         f"seed{args.seed}_ep{args.max_epochs}_chunk{args.chunk_size}"
     )
@@ -155,6 +162,7 @@ def save_metadata(experiment_dir, args, device_count, accumulation, data_module,
             "val_pairs_during_training": len(data_module.val_dataset),
             "full_val_pairs": len(data_module.full_val_dataset),
             "parameter_counts": counts,
+            "implementation_version": IMPLEMENTATION_VERSION,
         }
     )
     (paper_dir / "config.json").write_text(
@@ -219,7 +227,14 @@ def main():
                 save_dir=str(experiment_dir / "wandb"),
                 mode=args.wandb_mode,
                 log_model=wandb_log_model(args.wandb_log_model),
-                tags=["physical_v2", "optical_single", args.model, "fixed_ratio30", f"seed{args.seed}"],
+                tags=[
+                    "physical_v2",
+                    "physical_v2_1_2",
+                    "googleearth_single",
+                    args.model,
+                    "one_variant_per_row",
+                    f"seed{args.seed}",
+                ],
             )
         )
 
@@ -253,6 +268,12 @@ def main():
         chunk_size=args.chunk_size,
         gradient_log_interval=args.gradient_log_interval,
         polar_chunk_size=args.polar_chunk_size,
+        feature_visualization_interval=(
+            args.feature_visualization_interval if args.visualize_feature_maps else 0
+        ),
+        feature_visualization_dir=str(
+            experiment_dir / "paper_logs" / "latest_feature_maps"
+        ),
     )
     hyperparameters = {
         **{
@@ -266,6 +287,7 @@ def main():
         "train_pairs_per_epoch": len(data_module.train_dataset),
         "val_pairs_during_training": len(data_module.val_dataset),
         "full_val_pairs": len(data_module.full_val_dataset),
+        "implementation_version": IMPLEMENTATION_VERSION,
     }
     for logger in loggers:
         logger.log_hyperparams(hyperparameters)

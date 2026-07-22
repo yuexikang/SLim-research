@@ -23,6 +23,16 @@ def _autocast_disabled(tensor):
     return nullcontext()
 
 
+def safe_axial_angle(orientation, eps=1e-3):
+    """Convert doubled-angle vectors to an unsigned angle without atan2(0, 0)."""
+    x = orientation[:, 0].float()
+    y = orientation[:, 1].float()
+    valid = (x.square() + y.square()) >= float(eps) ** 2
+    safe_x = torch.where(valid, x, torch.ones_like(x))
+    safe_y = torch.where(valid, y, torch.zeros_like(y))
+    return 0.5 * torch.atan2(safe_y, safe_x)
+
+
 class FrozenSLiMCoarseExtractor(nn.Module):
     """Frozen official SLiM backbone restricted to the 1/8 coarse feature."""
 
@@ -148,19 +158,28 @@ class ReliabilityLinearAttention(nn.Module):
         return F.elu(feature) + 1.0
 
     def forward(self, query, source, source_reliability, query_pe, source_pe):
-        q = self.feature_map(self.q_proj(self.norm_query(query) + query_pe))
-        k = self.feature_map(self.k_proj(self.norm_source(source) + source_pe))
-        value = self.v_proj(self.norm_source(source))
-        reliability = source_reliability.detach().to(k.dtype).clamp(0.0, 1.0)
-        weighted_key = k * reliability
-        key_value = torch.einsum("blc,bld->bcd", weighted_key, value)
-        key_sum = weighted_key.sum(dim=1)
-        denominator = torch.einsum("blc,bc->bl", q, key_sum).clamp_min(self.eps)
-        attended = torch.einsum("blc,bcd->bld", q, key_value)
-        attended = attended / denominator[..., None]
-        update = self.out_proj(attended)
-        update = update + self.mlp(self.update_norm(update))
-        return query + update
+        output_dtype = query.dtype
+        with _autocast_disabled(query):
+            query_fp32 = query.float()
+            source_fp32 = source.float()
+            query_pe = query_pe.float()
+            source_pe = source_pe.float()
+            normalized_query = self.norm_query(query_fp32)
+            normalized_source = self.norm_source(source_fp32)
+            q = self.feature_map(self.q_proj(normalized_query + query_pe))
+            k = self.feature_map(self.k_proj(normalized_source + source_pe))
+            value = self.v_proj(normalized_source)
+            reliability = source_reliability.detach().float().clamp(0.0, 1.0)
+            weighted_key = k * reliability
+            key_value = torch.einsum("blc,bld->bcd", weighted_key, value)
+            key_sum = weighted_key.sum(dim=1)
+            denominator = torch.einsum("blc,bc->bl", q, key_sum).clamp_min(self.eps)
+            attended = torch.einsum("blc,bcd->bld", q, key_value)
+            attended = attended / denominator[..., None]
+            update = self.out_proj(attended)
+            update = update + self.mlp(self.update_norm(update))
+            output = query_fp32 + update
+        return output.to(output_dtype)
 
 
 class PairInteractionRound(nn.Module):
@@ -282,7 +301,7 @@ class DensePolarDescriptor(nn.Module):
         return self.norm(self.fusion(torch.cat([symmetric, antisymmetric], dim=-1)))
 
     def forward(self, feature, orientation):
-        phi = 0.5 * torch.atan2(orientation[:, 1], orientation[:, 0])
+        phi = safe_axial_angle(orientation)
         descriptor0 = self._sample_state(feature, phi, 0.0)
         descriptor_pi = self._sample_state(feature, phi, math.pi)
         fused = self.reversal_fuse(descriptor0, descriptor_pi)
@@ -370,7 +389,7 @@ class PhysicalEncoderV2(nn.Module):
         return (image, half, quarter)
 
     def _canonical_spectrum(self, spectrum, orientation):
-        theta = 0.5 * torch.atan2(orientation[:, 1], orientation[:, 0])
+        theta = safe_axial_angle(orientation)
         spectrum = spectrum / spectrum.sum(dim=1, keepdim=True).clamp_min(1e-6)
         canonical = self.canonicalizer(
             spectrum[:, None], theta, torch.ones_like(theta[:, None])

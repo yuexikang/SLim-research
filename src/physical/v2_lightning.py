@@ -1,6 +1,9 @@
+import json
 import math
 import time
+import warnings
 from collections import defaultdict
+from pathlib import Path
 
 import pytorch_lightning as pl
 import torch
@@ -14,9 +17,12 @@ from .models import count_trainable_parameters
 from .v1_losses import orientation_equivariance_loss
 from .v2_losses import recovery_and_preservation_loss
 from .v2_models import FrozenSLiMCoarseExtractor, build_physical_v2_encoder
+from .v2_visualization import write_latest_feature_maps
 
 
 class PhysicalV2Module(pl.LightningModule):
+    IMPLEMENTATION_VERSION = "2.1.2"
+
     def __init__(
         self,
         model_name="physical_v2_core",
@@ -29,6 +35,8 @@ class PhysicalV2Module(pl.LightningModule):
         chunk_size=256,
         gradient_log_interval=200,
         polar_chunk_size=1024,
+        feature_visualization_interval=20,
+        feature_visualization_dir=None,
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -40,6 +48,10 @@ class PhysicalV2Module(pl.LightningModule):
         self.coarse_scale = int(coarse_scale)
         self.chunk_size = int(chunk_size)
         self.gradient_log_interval = int(gradient_log_interval)
+        self.feature_visualization_interval = int(feature_visualization_interval)
+        self.feature_visualization_dir = (
+            Path(feature_visualization_dir) if feature_visualization_dir else None
+        )
         self.encoder = build_physical_v2_encoder(
             self.model_name, polar_chunk_size=polar_chunk_size
         )
@@ -65,6 +77,8 @@ class PhysicalV2Module(pl.LightningModule):
         self.train_epoch_started = None
         self.train_samples = 0
         self._gradient_contract_checked = False
+        self._active_batch_context = {}
+        self._last_visualized_step = None
 
     def train(self, mode=True):
         super().train(mode)
@@ -242,10 +256,62 @@ class PhysicalV2Module(pl.LightningModule):
                 sync_dist=True,
             )
 
+    def _maybe_visualize_features(
+        self, batch, batch_idx, base0, base1, output0, output1, total, components
+    ):
+        if (
+            self.feature_visualization_dir is None
+            or self.feature_visualization_interval <= 0
+            or not self.trainer.is_global_zero
+        ):
+            return
+        step = int(self.global_step)
+        if self._last_visualized_step == step:
+            return
+        if self._last_visualized_step is not None and step % self.feature_visualization_interval:
+            return
+        wavelength, sigma, gamma = self.encoder.gabor.constrained_parameters()
+        gabor_parameters = {
+            "wavelength": wavelength.detach().float().cpu().tolist(),
+            "sigma": sigma.detach().float().cpu().tolist(),
+            "gamma": gamma.detach().float().cpu().tolist(),
+        }
+        try:
+            write_latest_feature_maps(
+                self.feature_visualization_dir,
+                batch,
+                base0,
+                base1,
+                output0,
+                output1,
+                epoch=self.current_epoch,
+                global_step=step,
+                batch_idx=batch_idx,
+                losses={"total": total, **components},
+                gabor_parameters=gabor_parameters,
+            )
+            self._last_visualized_step = step
+        except Exception as exc:
+            error_path = self.feature_visualization_dir / "visualization_error.txt"
+            error_path.parent.mkdir(parents=True, exist_ok=True)
+            error_path.write_text(f"step={step}\n{type(exc).__name__}: {exc}\n", encoding="utf-8")
+            warnings.warn(f"Physical V2 feature visualization failed: {exc}")
+
     def training_step(self, batch, batch_idx):
+        self._active_batch_context = {
+            "batch_idx": int(batch_idx),
+            "remote_ids": self._batch_values(batch, "remote_id"),
+            "variants": self._batch_values(batch, "remote_aug_variant"),
+        }
         base0, base1, output0, output1, correspondences = self._forward_pair(batch)
         total, components, diagnostics = self._losses(
             batch, base0, base1, output0, output1, correspondences
+        )
+        self._check_finite_training_state(
+            batch, batch_idx, total, components, output0, output1
+        )
+        self._maybe_visualize_features(
+            batch, batch_idx, base0, base1, output0, output1, total, components
         )
         self._log_gradient_norms(components)
         batch_size = int(batch["image0"].shape[0])
@@ -314,8 +380,6 @@ class PhysicalV2Module(pl.LightningModule):
             )
 
     def on_after_backward(self):
-        if self._gradient_contract_checked:
-            return
         missing = [
             name
             for name, parameter in self.encoder.named_parameters()
@@ -332,12 +396,95 @@ class PhysicalV2Module(pl.LightningModule):
             if parameter.grad is not None
         ]
         if missing:
-            raise RuntimeError(f"Physical V2 parameters without gradients: {missing}")
+            self._fail_nonfinite("missing_gradient", {"parameters": missing})
         if nonfinite:
-            raise RuntimeError(f"Physical V2 parameters with non-finite gradients: {nonfinite}")
+            self._fail_nonfinite("nonfinite_gradient", {"parameters": nonfinite})
         if frozen_with_grad:
-            raise RuntimeError(f"Frozen SLiM unexpectedly received gradients: {frozen_with_grad}")
+            self._fail_nonfinite(
+                "frozen_slim_gradient", {"parameters": frozen_with_grad}
+            )
         self._gradient_contract_checked = True
+
+    def on_before_zero_grad(self, optimizer):
+        nonfinite = [
+            name
+            for name, parameter in self.encoder.named_parameters()
+            if not torch.isfinite(parameter).all()
+        ]
+        if nonfinite:
+            self._fail_nonfinite(
+                "nonfinite_parameter_after_optimizer_step",
+                {"parameters": nonfinite},
+            )
+
+    @staticmethod
+    def _batch_values(batch, key):
+        value = batch.get(key, [])
+        if torch.is_tensor(value):
+            return value.detach().cpu().tolist()
+        if isinstance(value, (list, tuple)):
+            return [str(item) for item in value]
+        return [str(value)]
+
+    def _diagnostic_path(self):
+        loggers = getattr(self.trainer, "loggers", [])
+        if loggers and getattr(loggers[0], "log_dir", None):
+            return Path(loggers[0].log_dir) / "paper_logs" / "nonfinite_failure.json"
+        return Path(self.trainer.default_root_dir) / "nonfinite_failure.json"
+
+    def _fail_nonfinite(self, stage, details):
+        payload = {
+            "stage": stage,
+            "epoch": int(self.current_epoch),
+            "global_step": int(self.global_step),
+            **self._active_batch_context,
+            **details,
+        }
+        if self.trainer.is_global_zero:
+            output = self._diagnostic_path()
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text(
+                json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+        raise FloatingPointError(
+            f"Physical V2 encountered {stage} at epoch={self.current_epoch}, "
+            f"global_step={self.global_step}: {details}"
+        )
+
+    def _check_finite_training_state(
+        self, batch, batch_idx, total, components, output0, output1
+    ):
+        nonfinite_losses = [
+            name for name, value in {"total": total, **components}.items()
+            if not torch.isfinite(value).all()
+        ]
+        if not nonfinite_losses:
+            return
+        nonfinite_outputs = []
+        for side, output in (("image0", output0), ("image1", output1)):
+            for name in (
+                "physical",
+                "delta",
+                "enhanced",
+                "orientation",
+                "reliability",
+                "scale_weights",
+            ):
+                if not torch.isfinite(output[name]).all():
+                    nonfinite_outputs.append(f"{side}/{name}")
+            for index, unary in enumerate(output["unary"]):
+                if not torch.isfinite(unary).all():
+                    nonfinite_outputs.append(f"{side}/unary_{index}")
+        self._fail_nonfinite(
+            "nonfinite_forward_or_loss",
+            {
+                "batch_idx": int(batch_idx),
+                "losses": nonfinite_losses,
+                "outputs": nonfinite_outputs,
+                "remote_ids": self._batch_values(batch, "remote_id"),
+                "variants": self._batch_values(batch, "remote_aug_variant"),
+            },
+        )
 
     def on_validation_epoch_start(self):
         self.frozen_slim.eval()
