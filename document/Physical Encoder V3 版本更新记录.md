@@ -1,6 +1,50 @@
 # Physical Encoder V3 版本更新记录
 
-> 当前实现：V3.0.0。基础结构规范见[Physical Encoder V3](./Physical%20Encoder%20V3.md)。本文件只记录实现修订，不重复完整设计。
+> 当前实现：V3.0.1。基础结构规范见[Physical Encoder V3](./Physical%20Encoder%20V3.md)。本文件只记录实现修订，不重复完整设计。
+
+## V3.0.1
+
+### 更新摘要
+
+- 修复高动态范围影像经过HIMO中位数归一化后，CoF所需灰度级超过2048而提前终止的问题。
+- CoF安全上限提高到8192并开放命令行配置，不压缩、不截断也不重新量化实际灰度级。
+- HIMO、PolarP、anchor、匹配协议和评价指标保持V3.0.0不变。
+
+### 详细内容
+
+#### CoF动态灰度级
+
+官方CoF根据当前影像最大整数灰度动态建立共现矩阵。部分多模态影像在非零中位数归一化后需要2169个灰度级，超过V3.0.0人为设置的2048安全上限，但仍属于合理输入。
+
+V3.0.1默认允许最多8192个灰度级。实际矩阵尺寸仍由当前影像动态决定，例如2169级只建立`2169x2169`矩阵。`--max_cooccurrence_levels`只防止异常暗图造成不可控矩阵分配，不会改变上限以内的图像数值。
+
+#### 验证状态
+
+- 新增超过2048灰度级的CoF回归测试；
+- 完整单元测试通过后运行正式数据集；
+- Proposed和Expanded MRSI正式结果在本版本完成后补充。
+
+### 文件变更
+
+#### 新增
+
+- 无
+
+#### 修改
+
+- `src/physical/v3_himo.py`
+- `test/evaluate_physical_v3_baseline.py`
+- `test/test_physical_v3_baseline.py`
+- `document/Physical Encoder V3.md`
+- `document/Physical Encoder V3 版本更新记录.md`
+
+#### 删除
+
+- 无
+
+#### 重命名
+
+- 无
 
 ## V3.0.0
 

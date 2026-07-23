@@ -1,6 +1,6 @@
 # 作用：无需训练，使用冻结 HIMO 与公开代码定义的 480 维 PolarP
 # 描述子测评真值影像对。
-# V3.0.0范围：单尺度可审计 HIMO 核心、固定 Shi-Tomasi anchor、
+# V3.0.1范围：单尺度可审计 HIMO 核心、固定 Shi-Tomasi anchor、
 # PolarP和最近邻唯一匹配；不使用SLiM、神经网络或RANSAC。
 
 from __future__ import annotations
@@ -69,6 +69,15 @@ def parse_args():
         "--cooccurrence",
         action=argparse.BooleanOptionalAction,
         default=True,
+    )
+    parser.add_argument(
+        "--max_cooccurrence_levels",
+        type=int,
+        default=8192,
+        help=(
+            "Safety limit for the source-faithful dynamic CoF matrix. "
+            "This does not quantize gray levels."
+        ),
     )
     parser.add_argument(
         "--rotation_invariant",
@@ -309,6 +318,7 @@ def main():
         cooccurrence=args.cooccurrence,
         patch_size=args.patch_size,
         spatial_bins=args.spatial_bins,
+        max_cooccurrence_levels=args.max_cooccurrence_levels,
     )
     polar_config = PolarPConfig(
         patch_size=args.patch_size,
@@ -342,7 +352,13 @@ def main():
     )
     result_rows = []
     for index, record in enumerate(
-        tqdm(rows_manifest, desc="V3.0.0 HIMO+PolarP no-training baseline")
+        tqdm(
+            rows_manifest,
+            desc=(
+                f"V{HIMO_IMPLEMENTATION_VERSION} "
+                "HIMO+PolarP no-training baseline"
+            ),
+        )
     ):
         pair_started = time.perf_counter()
         feature0, cache_hit0 = cache.get(record["image0"])
@@ -442,6 +458,7 @@ def main():
         "image_size": args.image_size,
         "config": {
             "cooccurrence": args.cooccurrence,
+            "max_cooccurrence_levels": args.max_cooccurrence_levels,
             "rotation_invariant": args.rotation_invariant,
             "multiple_orientations": args.multiple_orientations,
             "patch_size": args.patch_size,

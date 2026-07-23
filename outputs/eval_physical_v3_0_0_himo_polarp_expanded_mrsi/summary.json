@@ -1,0 +1,121 @@
+{
+  "version": "v3.0.1",
+  "evaluation": "physical_v3_himo_polarp_no_training",
+  "implementation_scope": {
+    "included": [
+      "inspectable single-scale HIMO core",
+      "fixed Shi-Tomasi anchors on HIMO structural magnitude",
+      "code-traceable 480-D PolarP",
+      "nearest-neighbor matching with unique targets"
+    ],
+    "excluded": [
+      "opaque official Deal_Extreme.p and Preproscessing.p",
+      "DoFS keypoint enhancement",
+      "CDMS multiscale matching",
+      "RANSAC filtering",
+      "all learned modules"
+    ],
+    "himo_source_commit": "884297aa36dfb9c89d9a7d5bf66c142bf8707a77"
+  },
+  "protocol": {
+    "correct": "original-coordinate reprojection error <= 5.0px",
+    "success": "NCM >= 20",
+    "failed_rmse": 10.0,
+    "filtering": "ground-truth label only; no RANSAC",
+    "descriptor_normalization": "none"
+  },
+  "manifest_path": "data/remote_archive/manifests/test_SwinMatcher_expanded_MRSI_gt.jsonl",
+  "manifest_split": "test",
+  "image_size": 512,
+  "config": {
+    "cooccurrence": true,
+    "max_cooccurrence_levels": 8192,
+    "rotation_invariant": true,
+    "multiple_orientations": true,
+    "patch_size": 72,
+    "spatial_bins": 12,
+    "orientation_bins": 12,
+    "max_keypoints": 1000,
+    "keypoint_quality": 0.01,
+    "keypoint_min_distance": 4.0
+  },
+  "overall": {
+    "num_pairs": 600,
+    "NCM": 6.56,
+    "Pre": 0.02220244914871476,
+    "SR": 0.08166666666666667,
+    "RMSE": 9.414913602152797,
+    "mean_matches": 165.36666666666667,
+    "mean_runtime_ms": 1251.804895453194,
+    "mean_keypoints0": 1141.5,
+    "mean_keypoints1": 940.7166666666667
+  },
+  "by_modality_pair": {
+    "optical-depth": {
+      "num_pairs": 100,
+      "NCM": 1.09,
+      "Pre": 0.008267031811467634,
+      "SR": 0.0,
+      "RMSE": 10.0,
+      "mean_matches": 137.48,
+      "mean_runtime_ms": 1005.1272853906266,
+      "mean_keypoints0": 1023.4,
+      "mean_keypoints1": 924.75
+    },
+    "optical-infrared": {
+      "num_pairs": 100,
+      "NCM": 23.52,
+      "Pre": 0.07113598474122357,
+      "SR": 0.3,
+      "RMSE": 7.85536710276032,
+      "mean_matches": 182.0,
+      "mean_runtime_ms": 1233.0090748867951,
+      "mean_keypoints0": 1199.0,
+      "mean_keypoints1": 949.22
+    },
+    "optical-map": {
+      "num_pairs": 100,
+      "NCM": 0.43,
+      "Pre": 0.005654120461375839,
+      "SR": 0.0,
+      "RMSE": 10.0,
+      "mean_matches": 53.81,
+      "mean_runtime_ms": 812.1209413767792,
+      "mean_keypoints0": 1161.3,
+      "mean_keypoints1": 513.38
+    },
+    "optical-optical": {
+      "num_pairs": 100,
+      "NCM": 9.11,
+      "Pre": 0.030225753276143984,
+      "SR": 0.15,
+      "RMSE": 8.913370376996077,
+      "mean_matches": 177.37,
+      "mean_runtime_ms": 1395.9885552001651,
+      "mean_keypoints0": 1084.4,
+      "mean_keypoints1": 993.49
+    },
+    "optical-sar": {
+      "num_pairs": 100,
+      "NCM": 3.1,
+      "Pre": 0.01096586586261101,
+      "SR": 0.01,
+      "RMSE": 9.933841668757811,
+      "mean_matches": 250.61,
+      "mean_runtime_ms": 1475.2454871381633,
+      "mean_keypoints0": 1102.2,
+      "mean_keypoints1": 1076.74
+    },
+    "optical_day-optical_night": {
+      "num_pairs": 100,
+      "NCM": 2.11,
+      "Pre": 0.006965938739466506,
+      "SR": 0.03,
+      "RMSE": 9.786902464402578,
+      "mean_matches": 190.93,
+      "mean_runtime_ms": 1589.3380287266336,
+      "mean_keypoints0": 1278.7,
+      "mean_keypoints1": 1186.72
+    }
+  }
+}

@@ -1,0 +1,1 @@
+test/evaluate_physical_v3_baseline.py --manifest_path data/remote_archive/manifests/test_SwinMatcher_proposed_gt.jsonl --manifest_split test --output_dir outputs/eval_physical_v3_0_1_himo_polarp_proposed --device cuda:0 --image_size 512 --max_keypoints 1000 --num_vis_pairs 10

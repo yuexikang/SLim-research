@@ -41,6 +41,16 @@ def test_cooccurrence_filter_is_deterministic():
     torch.testing.assert_close(first, second, rtol=0, atol=0)
 
 
+def test_cooccurrence_filter_accepts_more_than_2048_gray_levels():
+    image = torch.tensor(
+        [[0.0, 2168.0], [1084.0, 2168.0]],
+        dtype=torch.float32,
+    )
+    output = cooccurrence_filter(image, max_levels=8192)
+    assert output.shape == image.shape
+    assert torch.isfinite(output).all()
+
+
 def test_polarp_code_descriptor_is_480_dimensional_and_deterministic():
     height = width = 80
     yy, xx = np.mgrid[:height, :width]

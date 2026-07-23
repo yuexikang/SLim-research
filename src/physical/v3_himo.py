@@ -12,7 +12,7 @@ from torch.nn import functional as F
 
 
 HIMO_SOURCE_COMMIT = "884297aa36dfb9c89d9a7d5bf66c142bf8707a77"
-HIMO_IMPLEMENTATION_VERSION = "3.0.0"
+HIMO_IMPLEMENTATION_VERSION = "3.0.1"
 
 
 @dataclass(frozen=True)
@@ -30,7 +30,7 @@ class HIMOConfig:
     masw_scales: int = 4
     intensity_difference: bool = True
     validness_threshold: float = 0.1
-    max_cooccurrence_levels: int = 2048
+    max_cooccurrence_levels: int = 8192
 
 
 def _gaussian_kernel(
