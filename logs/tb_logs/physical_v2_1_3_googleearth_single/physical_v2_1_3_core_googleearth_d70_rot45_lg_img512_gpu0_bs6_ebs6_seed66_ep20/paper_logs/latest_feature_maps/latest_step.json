@@ -1,0 +1,51 @@
+{
+  "version": "Physical Encoder V2.1.3",
+  "epoch": 0,
+  "global_step": 0,
+  "batch_idx": 0,
+  "remote_id": "single/optical/6c40ed557a46",
+  "variant": "yaw",
+  "model_input_shape": [
+    512,
+    512
+  ],
+  "coarse_feature_shape": [
+    64,
+    64
+  ],
+  "display": {
+    "input": "native 512x512 model tensor",
+    "features": "native 64x64 coarse grid enlarged with nearest-neighbor"
+  },
+  "files": [
+    "inputs.png",
+    "odd_even_features.png",
+    "physical_gates.png",
+    "descriptor_features.png"
+  ],
+  "losses": {
+    "total": 26.144262313842773,
+    "recover": 4.81715726852417,
+    "keep": 0.0,
+    "physical": 16.499189376831055,
+    "unary": 16.052879333496094,
+    "orientation": 0.12050145864486694
+  },
+  "gabor": {
+    "wavelength": [
+      3.0,
+      6.0,
+      12.0
+    ],
+    "sigma": [
+      1.6800000667572021,
+      3.3600001335144043,
+      6.720000267028809
+    ],
+    "gamma": [
+      0.5,
+      0.5,
+      0.5
+    ]
+  }
+}

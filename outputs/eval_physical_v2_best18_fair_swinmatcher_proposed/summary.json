@@ -1,0 +1,255 @@
+{
+  "evaluation": "physical_v2_fair_comparison",
+  "protocol": {
+    "shared": "same resized inputs, official SLiM backbone, dual-softmax coarse selection, thresholds and original-coordinate GT",
+    "coarse": "coarse token centers after official SLiM coarse selection",
+    "full": "official SLiM coarse, fine matching and recurrent refinement",
+    "enhanced": "base SLiM coarse + Physical V2 adapter delta",
+    "correct": "original-coordinate reprojection error <= 5.0px",
+    "success": "NCM >= 20",
+    "failed_rmse": 10.0,
+    "filtering": "ground-truth label only; no RANSAC"
+  },
+  "model": "physical_v2_core",
+  "physical_checkpoint": "logs/tb_logs/physical_v2_1_4_googleearth_single/physical_v2_1_4_core_googleearth_rectified_d70_rot45_lg_img512_gpu0_bs6_ebs6_seed66_ep20/checkpoints/best-18.ckpt",
+  "physical_checkpoint_epoch": 18,
+  "official_slim_checkpoint": "ckpt/megadepth_19epochs.ckpt",
+  "manifest_path": "data/remote_archive/manifests/test_SwinMatcher_proposed_gt.jsonl",
+  "image_size": 512,
+  "physical_amp": true,
+  "trainable_physical_parameters": 711273,
+  "routes": {
+    "base_coarse": {
+      "overall": {
+        "num_pairs": 400,
+        "matches": 631.3525,
+        "NCM": 228.6275,
+        "Pre": 0.27478162620986885,
+        "SR": 0.8425,
+        "RMSE": 4.256068057802299,
+        "runtime_ms": 21.64945594558958
+      },
+      "by_modality_pair": {
+        "optical-lidar": {
+          "num_pairs": 50,
+          "matches": 418.88,
+          "NCM": 91.12,
+          "Pre": 0.18642746398389903,
+          "SR": 0.8,
+          "RMSE": 4.506821849175364,
+          "runtime_ms": 21.42738611670211
+        },
+        "optical-map": {
+          "num_pairs": 100,
+          "matches": 372.82,
+          "NCM": 72.94,
+          "Pre": 0.14484909049267566,
+          "SR": 0.62,
+          "RMSE": 5.827677479559738,
+          "runtime_ms": 20.92239954858087
+        },
+        "optical-sar": {
+          "num_pairs": 70,
+          "matches": 746.5428571428571,
+          "NCM": 269.9142857142857,
+          "Pre": 0.3034670075248539,
+          "SR": 0.9142857142857143,
+          "RMSE": 3.742212206486963,
+          "runtime_ms": 21.378479778234446
+        },
+        "sar-lidar": {
+          "num_pairs": 180,
+          "matches": 789.2055555555555,
+          "NCM": 337.2611111111111,
+          "Pre": 0.36035376504858474,
+          "SR": 0.95,
+          "RMSE": 3.5131307125116114,
+          "runtime_ms": 22.220441850367934
+        }
+      }
+    },
+    "enhanced_coarse": {
+      "overall": {
+        "num_pairs": 400,
+        "matches": 926.6375,
+        "NCM": 283.0125,
+        "Pre": 0.2604928408045224,
+        "SR": 0.925,
+        "RMSE": 3.7341724401730607,
+        "runtime_ms": 132.45706432498991
+      },
+      "by_modality_pair": {
+        "optical-lidar": {
+          "num_pairs": 50,
+          "matches": 792.06,
+          "NCM": 162.64,
+          "Pre": 0.18933121840114467,
+          "SR": 0.96,
+          "RMSE": 3.467781139760977,
+          "runtime_ms": 131.61158447153866
+        },
+        "optical-map": {
+          "num_pairs": 100,
+          "matches": 714.17,
+          "NCM": 111.19,
+          "Pre": 0.13218041598899125,
+          "SR": 0.78,
+          "RMSE": 4.7669407305439675,
+          "runtime_ms": 133.89701592852362
+        },
+        "optical-sar": {
+          "num_pairs": 70,
+          "matches": 1008.1714285714286,
+          "NCM": 299.98571428571427,
+          "Pre": 0.263416597601508,
+          "SR": 0.9714285714285714,
+          "RMSE": 3.397033828468497,
+          "runtime_ms": 127.90942130211208
+        },
+        "sar-lidar": {
+          "num_pairs": 180,
+          "matches": 1050.35,
+          "NCM": 405.30555555555554,
+          "Pre": 0.35040762205970594,
+          "SR": 0.9777777777777777,
+          "RMSE": 3.3655193224110223,
+          "runtime_ms": 133.66047456899346
+        }
+      }
+    },
+    "base_full": {
+      "overall": {
+        "num_pairs": 400,
+        "matches": 3391.805,
+        "NCM": 1335.0825,
+        "Pre": 0.34459881990360147,
+        "SR": 0.96,
+        "RMSE": 2.812813620157043,
+        "runtime_ms": 101.12187244172674
+      },
+      "by_modality_pair": {
+        "optical-lidar": {
+          "num_pairs": 50,
+          "matches": 2951.32,
+          "NCM": 870.08,
+          "Pre": 0.2610477623148674,
+          "SR": 0.94,
+          "RMSE": 2.9143271402946858,
+          "runtime_ms": 92.14015641715378
+        },
+        "optical-map": {
+          "num_pairs": 100,
+          "matches": 2489.68,
+          "NCM": 434.02,
+          "Pre": 0.15241344028757295,
+          "SR": 0.9,
+          "RMSE": 3.6728541215716213,
+          "runtime_ms": 98.66136418655515
+        },
+        "optical-sar": {
+          "num_pairs": 70,
+          "matches": 4056.1428571428573,
+          "NCM": 1621.9,
+          "Pre": 0.36724482238414563,
+          "SR": 0.9857142857142858,
+          "RMSE": 2.6068578142638015,
+          "runtime_ms": 102.15637298866308
+        },
+        "sar-lidar": {
+          "num_pairs": 180,
+          "matches": 3756.988888888889,
+          "NCM": 1853.3,
+          "Pre": 0.46577032361138726,
+          "SR": 0.9888888888888889,
+          "RMSE": 2.386909066069194,
+          "runtime_ms": 104.58143682206153
+        }
+      }
+    },
+    "enhanced_full": {
+      "overall": {
+        "num_pairs": 400,
+        "matches": 3972.52,
+        "NCM": 1349.825,
+        "Pre": 0.31874096579824446,
+        "SR": 0.9875,
+        "RMSE": 2.719295065790096,
+        "runtime_ms": 217.12308774149278
+      },
+      "by_modality_pair": {
+        "optical-lidar": {
+          "num_pairs": 50,
+          "matches": 3519.32,
+          "NCM": 984.9,
+          "Pre": 0.26125548402086995,
+          "SR": 1.0,
+          "RMSE": 2.5519725812425107,
+          "runtime_ms": 218.21680371882394
+        },
+        "optical-map": {
+          "num_pairs": 100,
+          "matches": 3477.4,
+          "NCM": 503.51,
+          "Pre": 0.142623747136545,
+          "SR": 0.96,
+          "RMSE": 3.338376894702069,
+          "runtime_ms": 214.2180211667437
+        },
+        "optical-sar": {
+          "num_pairs": 70,
+          "matches": 4233.971428571429,
+          "NCM": 1382.1142857142856,
+          "Pre": 0.30874668173919745,
+          "SR": 1.0,
+          "RMSE": 2.5803241450137873,
+          "runtime_ms": 213.91324634563975
+        },
+        "sar-lidar": {
+          "num_pairs": 180,
+          "matches": 4271.8,
+          "NCM": 1908.8111111111111,
+          "Pre": 0.43643872046031096,
+          "SR": 0.9944444444444445,
+          "RMSE": 2.475883431293003,
+          "runtime_ms": 219.68147527659312
+        }
+      }
+    }
+  },
+  "enhanced_minus_base": {
+    "coarse": {
+      "matches": 295.2850000000001,
+      "NCM": 54.38499999999999,
+      "Pre": -0.01428878540534645,
+      "SR": 0.08250000000000002,
+      "RMSE": -0.5218956176292382,
+      "runtime_ms": 110.80760837940034,
+      "relative_NCM": 1.2378760210385888,
+      "relative_Pre": 0.9479994874386791
+    },
+    "full": {
+      "matches": 580.7150000000001,
+      "NCM": 14.742500000000064,
+      "Pre": -0.025857854105357014,
+      "SR": 0.02750000000000008,
+      "RMSE": -0.093518554366947,
+      "runtime_ms": 116.00121529976605,
+      "relative_NCM": 1.0110423887662374,
+      "relative_Pre": 0.9249624415063565
+    }
+  },
+  "checkpoint_hparams": {
+    "model_name": "physical_v2_core",
+    "slim_checkpoint": "ckpt/megadepth_19epochs.ckpt",
+    "learning_rate": 0.0001,
+    "physical_learning_rate": 1e-05,
+    "weight_decay": 0.01,
+    "max_epochs": 20,
+    "coarse_scale": 8,
+    "chunk_size": 256,
+    "gradient_log_interval": 200,
+    "polar_chunk_size": 512,
+    "feature_visualization_interval": 20,
+    "feature_visualization_dir": "logs/tb_logs/physical_v2_1_4_googleearth_single/physical_v2_1_4_core_googleearth_rectified_d70_rot45_lg_img512_gpu0_bs6_ebs6_seed66_ep20/paper_logs/latest_feature_maps"
+  }
+}

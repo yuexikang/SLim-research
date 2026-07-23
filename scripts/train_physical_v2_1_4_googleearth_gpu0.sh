@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd /home/disk1/SLiM
+export CUDA_VISIBLE_DEVICES=0
+export MPLCONFIGDIR=/tmp/matplotlib
+export NO_ALBUMENTATIONS_UPDATE=1
+
+exec /root/miniconda3/envs/slim/bin/python train_physical_v2.py \
+  --model physical_v2_core \
+  --device "0," \
+  --resume_ckpt_path logs/tb_logs/physical_v2_1_3_googleearth_single/physical_v2_1_3_core_googleearth_d70_rot45_lg_gradguard_img512_gpu0_bs6_ebs6_seed66_ep20/checkpoints/last.ckpt \
+  --train_manifest data/remote_archive/manifests/train_GoogleEarth_single.jsonl \
+  --val_manifest data/remote_archive/manifests/val_GoogleEarth_single.jsonl \
+  --train_data_ratio 1.0 \
+  --train_one_variant_per_row \
+  --val_one_variant_per_row \
+  --full_validate_best_at_end \
+  --homography_difficulty 0.7 \
+  --rotation_limit_degrees 45 \
+  --minimum_region_sampler \
+  --photometric_augmentation lg \
+  --valid_crop_rectification \
+  --task_name physical_v2_1_4_googleearth_single \
+  --run_name physical_v2_1_4_core_googleearth_rectified_d70_rot45_lg_img512_gpu0_bs6_ebs6_seed66_ep20 \
+  --batch_size 6 \
+  --effective_batch_size 6 \
+  --val_batch_size 2 \
+  --num_workers 6 \
+  --max_epochs 20 \
+  --chunk_size 256 \
+  --polar_chunk_size 512 \
+  --gradient_log_interval 200 \
+  --visualize_feature_maps \
+  --feature_visualization_interval 20 \
+  --seed 66 \
+  --save_every_n_epochs 2 \
+  --amp \
+  --use_wandb \
+  --wandb_project slim_physical_v2 \
+  --wandb_mode online \
+  --wandb_log_model false

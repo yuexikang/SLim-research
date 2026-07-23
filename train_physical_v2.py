@@ -25,7 +25,7 @@ DEFAULT_TRAIN_MANIFEST = Path(
 DEFAULT_VAL_MANIFEST = Path(
     "data/remote_archive/manifests/val_GoogleEarth_single.jsonl"
 )
-IMPLEMENTATION_VERSION = "2.1.2"
+IMPLEMENTATION_VERSION = "2.1.4"
 
 
 def parse_limit(value):
@@ -68,7 +68,23 @@ def parse_args():
     parser.add_argument("--learning_rate", type=float, default=1e-4)
     parser.add_argument("--physical_learning_rate", type=float, default=1e-5)
     parser.add_argument("--weight_decay", type=float, default=0.01)
-    parser.add_argument("--homography_difficulty", type=float, default=0.3)
+    parser.add_argument("--homography_difficulty", type=float, default=0.7)
+    parser.add_argument("--rotation_limit_degrees", type=float, default=45.0)
+    parser.add_argument(
+        "--minimum_region_sampler",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
+    parser.add_argument(
+        "--photometric_augmentation",
+        choices=["none", "lg"],
+        default="lg",
+    )
+    parser.add_argument(
+        "--valid_crop_rectification",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
     parser.add_argument("--chunk_size", type=int, default=256)
     parser.add_argument("--polar_chunk_size", type=int, default=1024)
     parser.add_argument("--gradient_log_interval", type=int, default=200)
@@ -140,7 +156,9 @@ def build_run_name(args, device_count):
     return (
         f"{args.model}_googleearth_subset{subset}_img{args.image_size}_"
         f"gpu{device_count}_bs{args.batch_size}_ebs{args.effective_batch_size}_"
-        f"seed{args.seed}_ep{args.max_epochs}_chunk{args.chunk_size}"
+        f"d{round(args.homography_difficulty * 100)}_rot{round(args.rotation_limit_degrees)}_"
+        f"photo{args.photometric_augmentation}_seed{args.seed}_ep{args.max_epochs}_"
+        f"chunk{args.chunk_size}"
     )
 
 
@@ -229,10 +247,14 @@ def main():
                 log_model=wandb_log_model(args.wandb_log_model),
                 tags=[
                     "physical_v2",
-                    "physical_v2_1_2",
+                    "physical_v2_1_4",
                     "googleearth_single",
                     args.model,
                     "one_variant_per_row",
+                    f"homography_d{round(args.homography_difficulty * 100)}",
+                    f"rotation{round(args.rotation_limit_degrees)}",
+                    f"photo_{args.photometric_augmentation}",
+                    "valid_crop_rectification",
                     f"seed{args.seed}",
                 ],
             )
@@ -254,6 +276,14 @@ def main():
         selected_train_rows=None,
         train_one_variant_per_row=args.train_one_variant_per_row,
         val_one_variant_per_row=args.val_one_variant_per_row,
+        rotation_limit_degrees=args.rotation_limit_degrees,
+        minimum_region_sampler=args.minimum_region_sampler,
+        photometric_augmentation=(
+            None
+            if args.photometric_augmentation == "none"
+            else args.photometric_augmentation
+        ),
+        valid_crop_rectification=args.valid_crop_rectification,
     )
     data_module.setup("fit")
     save_metadata(experiment_dir, args, device_count, accumulation, data_module, counts)

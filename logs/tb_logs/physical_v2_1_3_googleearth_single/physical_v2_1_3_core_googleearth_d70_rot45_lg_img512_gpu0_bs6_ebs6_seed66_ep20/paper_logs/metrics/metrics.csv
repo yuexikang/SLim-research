@@ -1,0 +1,2 @@
+lr-AdamW/physical_filters,lr-AdamW/physical_v2,lr-AdamW/temperature,step
+1e-05,0.0001,0.0001,0

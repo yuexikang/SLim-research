@@ -10,6 +10,8 @@
 | V2.1 | 数值稳定性修订 | Pair Linear Attention改用FP32；加入Safe Axial Angle和非有限值三级诊断 | [版本更新记录](./Physical%20Encoder%20V2%20版本更新记录.md) |
 | V2.1.1 | 训练可观测性修订 | 每20 step覆盖输出关键物理特征图；固定文件名，不保留历史图片；模型参数拓扑不变 | [版本更新记录](./Physical%20Encoder%20V2%20版本更新记录.md) |
 | V2.1.2 | GoogleEarth数据修订 | 移除3MOS训练行；GoogleEarth按pair无泄漏划分并展开为单图；每图每epoch一种在线扰动 | [版本更新记录](./Physical%20Encoder%20V2%20版本更新记录.md) |
+| V2.1.3 | 强几何与LG光度增强 | difficulty 0.7、最小区域0.3、roll ±45°；训练目标图启用p=0.95的LG在线增强 | [版本更新记录](./Physical%20Encoder%20V2%20版本更新记录.md) |
+| V2.1.4 | 有效区域Rectification | 在原图内采样有效四边形并展开为完整512 patch，取消旋转/透视后的黑色补边 | [版本更新记录](./Physical%20Encoder%20V2%20版本更新记录.md) |
 
 ## 1. 研究边界
 

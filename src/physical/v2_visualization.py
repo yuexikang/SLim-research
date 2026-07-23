@@ -210,7 +210,7 @@ def write_latest_feature_maps(
             [
                 _panel(
                     _heatmap(_feature_activity(output["physical"][0])),
-                    f"{side_name} physical",
+                    f"{side_name} physical channel activity",
                 ),
                 _panel(
                     _heatmap(_feature_norm(output["delta"][0])),
@@ -231,7 +231,7 @@ def write_latest_feature_maps(
     )
 
     payload = {
-        "version": "Physical Encoder V2.1.2",
+        "version": "Physical Encoder V2.1.4",
         "epoch": int(epoch),
         "global_step": int(global_step),
         "batch_idx": int(batch_idx),

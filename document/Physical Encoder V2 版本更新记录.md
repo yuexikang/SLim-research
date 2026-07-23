@@ -1,6 +1,104 @@
 # Physical Encoder V2 版本更新记录
 
-> 当前实现：V2.1.2。基础结构规范见[Physical Encoder V2](./Physical%20Encoder%20V2.md)。本文件只记录实现修订，不重复完整模型设计。
+> 当前实现：V2.1.4。基础结构规范见[Physical Encoder V2](./Physical%20Encoder%20V2.md)。本文件只记录实现修订，不重复完整模型设计。
+
+## V2.1.4
+
+### 更新摘要
+
+- 合成几何改为在原始分辨率影像内部采样两组有效四边形，再分别透视展开成完整的`512x512` patch。
+- 不再把整张正方形图旋转或透视后用黑色填充越界区域，避免补边成为物理头的强伪边缘。
+- View 0和View 1均来自同一原图的有效区域，输出监督Homography同步按两个rectification矩阵计算。
+- LG增强增加低亮度质量保护，防止森林等暗场景被连续负亮度扰动压成近全黑图像。
+- V2网络、loss、GoogleEarth索引、LG光度增强和每图每epoch一种扰动均保持不变。
+
+### 具体更新
+
+#### 有效区域采样与Rectification
+
+在原图坐标中先采样凸四边形`Q0`，再按本epoch选中的`translation / scale / yaw / pitch / roll`得到`Q1`。两者必须同时满足：顶点位于原图内部、保持凸性、距边界至少2像素，且面积不小于难度`d=0.7`所规定的最小区域面积：
+
+$$
+A(Q_i) \ge (1-d)^2WH = 0.09WH.
+$$
+
+令`R0`和`R1`分别把`Q0/Q1`映射到完整的`512x512`目标矩形，则：
+
+$$
+I_0=\operatorname{warp}(I,R_0),\qquad
+I_1=\operatorname{warp}(I,R_1),\qquad
+H_{0\rightarrow1}=R_1R_0^{-1}.
+$$
+
+因此两张输入都由原图有效像素构成，不依赖黑色padding；源图只在最终采样时插值到512，不先压缩为512再变形。边界模式使用`BORDER_REFLECT_101`作为数值保险，但有效四边形约束使正常采样不会读取原图外像素。
+
+#### 低亮度质量保护
+
+LG光度增强仍保留V2.1.3的概率与参数，但每次增强结果必须同时满足：
+
+- 平均灰度不低于`18/255`；
+- 平均灰度不低于增强前View B的40%；
+- 灰度不超过5的近黑像素占比不高于45%。
+
+不满足时使用由原样本seed确定性派生的新seed重新采样，最多尝试4次。四次都不合格时回退到增强前View B。该保护只拦截光度增强造成的亮度塌缩，不改变原始暗场景、不修改几何Homography，恢复训练时仍可复现。
+
+#### 物理特征图解释修订
+
+可视化首列名称由`physical`改为`physical channel activity`。该图是96维物理描述子在通道维的标准差，并且每个面板独立按分位数着色，不是描述子L2范数；黄色只表示当前面板内相对活跃。黑色补边曾经通过LDN和Gabor产生强边界响应，因此可能在物理活动图中显示为高值，而冻结SLiM的特征范数在无纹理补边中通常较低。
+
+#### 代码与兼容性
+
+- `train_physical_v2.py`默认启用`--valid_crop_rectification`，可用`--no-valid_crop_rectification`仅作旧实验复现。
+- 训练和快速/完整验证共用相同有效区域几何协议；验证仍不使用LG光度增强。
+- 新增LG低亮度质量门槛、确定性重试及原图回退，避免无有效纹理的近全黑样本进入训练。
+- 新增五类几何的边界、无黑色补边、确定性和Homography方向回归测试。
+- 实现版本、checkpoint hparams、特征图metadata、W&B tag和正式训练脚本更新为`2.1.4`。
+- 模型参数拓扑不变，旧V2 checkpoint可以完整恢复；当前V2.1.4正式实验按实验要求从V2.1.3的`last.ckpt`继续训练。
+
+## V2.1.3
+
+### 更新摘要
+
+- Homography difficulty由0.3提高到0.7，最小有效区域边长为原图的30%。
+- roll旋转范围改为`[-45°, 45°]`，不再重复乘difficulty。
+- 新增总体概率0.95的`lg`在线光度增强，只作用于训练对的第二张图。
+- GoogleEarth索引、每图每epoch一种几何扰动、模型结构和loss保持不变。
+
+### 具体更新
+
+#### 几何采样
+
+设输入尺寸为`W x H`、难度为`d=0.7`：
+
+$$
+W_{min}=W(1-d)=0.3W,\qquad H_{min}=H(1-d)=0.3H.
+$$
+
+translation的最大位移由最小重叠边长约束；scale在`0.3`与`1/0.3`之间按log尺度采样；yaw和pitch的梯形短边不小于0.3倍原边长；roll独立使用`±45°`。五种几何类型仍由`seed + epoch + row_index`每图每epoch选择一种。
+
+#### LG光度增强
+
+整套Compose执行概率为`0.95`，内部配置如下：
+
+| 变换 | 概率 | 参数 |
+|---|---:|---|
+| RandomGamma | 0.1 | `gamma_limit=(15,65)` |
+| HueSaturationValue | 0.1 | `val_shift_limit=(-100,-40)` |
+| Blur/MotionBlur/ISONoise/ImageCompression四选一 | 0.1 | Blur `3-9`，MotionBlur `3-25` |
+| Blur | 0.1 | `blur_limit=(3,9)` |
+| MotionBlur | 0.1 | `blur_limit=(3,25)` |
+| RandomBrightnessContrast | 0.5 | brightness `[-0.4,0]`，contrast `[-0.3,0]` |
+| CLAHE | 0.2 | Albumentations默认参数 |
+
+输入灰度图先复制为RGB执行增强，再转回灰度。训练中的`image0`保持干净参照，`image1`执行`lg`；光度随机种子与epoch和row绑定，可重复运行。常规验证与最终完整验证都不启用随机光度增强。
+
+#### 代码与兼容性
+
+- V2入口默认参数更新为`homography_difficulty=0.7`、`rotation_limit_degrees=45`、`minimum_region_sampler=true`和`photometric_augmentation=lg`。
+- 参数化Gabor的核生成、响应卷积和幅值链统一使用FP32，防止强几何与低亮度增强下BF16反向溢出；V1默认路径不变。
+- 若个别强增强样本仍使三个Gabor标量参数产生NaN/Inf梯度，仅把对应非有限元素置零，有限梯度和其他模块不变；W&B通过`train/gabor_sanitized_grad_elements`记录触发数量，防止异常值进入AdamW状态。
+- 实现版本、checkpoint hparams、特征图metadata和W&B tag更新为`2.1.3`。
+- 模型参数拓扑不变，旧V2 checkpoint仍可加载；V2.1.3 GoogleEarth实验从头训练。
 
 ## V2.1.2
 

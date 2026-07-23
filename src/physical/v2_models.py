@@ -340,7 +340,7 @@ class PhysicalEncoderV2(nn.Module):
         self.oe_mode = str(oe_mode)
         self.single_scale = bool(single_scale)
         self.ldn = FixedLocalDivisiveNormalization()
-        self.gabor = ParametricSteerableGaborBank()
+        self.gabor = ParametricSteerableGaborBank(response_fp32=True)
         self.masw = SharedMASW()
         self.blur_pool = FixedBlurPool(1)
         self.canonicalizer = ContinuousOrientationCanonicalization()

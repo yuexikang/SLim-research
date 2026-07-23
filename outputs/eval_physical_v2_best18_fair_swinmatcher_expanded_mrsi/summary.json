@@ -1,0 +1,327 @@
+{
+  "evaluation": "physical_v2_fair_comparison",
+  "protocol": {
+    "shared": "same resized inputs, official SLiM backbone, dual-softmax coarse selection, thresholds and original-coordinate GT",
+    "coarse": "coarse token centers after official SLiM coarse selection",
+    "full": "official SLiM coarse, fine matching and recurrent refinement",
+    "enhanced": "base SLiM coarse + Physical V2 adapter delta",
+    "correct": "original-coordinate reprojection error <= 5.0px",
+    "success": "NCM >= 20",
+    "failed_rmse": 10.0,
+    "filtering": "ground-truth label only; no RANSAC"
+  },
+  "model": "physical_v2_core",
+  "physical_checkpoint": "logs/tb_logs/physical_v2_1_4_googleearth_single/physical_v2_1_4_core_googleearth_rectified_d70_rot45_lg_img512_gpu0_bs6_ebs6_seed66_ep20/checkpoints/best-18.ckpt",
+  "physical_checkpoint_epoch": 18,
+  "official_slim_checkpoint": "ckpt/megadepth_19epochs.ckpt",
+  "manifest_path": "data/remote_archive/manifests/test_SwinMatcher_expanded_MRSI_gt.jsonl",
+  "image_size": 512,
+  "physical_amp": true,
+  "trainable_physical_parameters": 711273,
+  "routes": {
+    "base_coarse": {
+      "overall": {
+        "num_pairs": 600,
+        "matches": 513.405,
+        "NCM": 204.84166666666667,
+        "Pre": 0.30910749140301325,
+        "SR": 0.825,
+        "RMSE": 4.36545191290202,
+        "runtime_ms": 21.314859032281674
+      },
+      "by_modality_pair": {
+        "optical-depth": {
+          "num_pairs": 100,
+          "matches": 451.12,
+          "NCM": 168.75,
+          "Pre": 0.3378217911985944,
+          "SR": 0.91,
+          "RMSE": 3.780409693452088,
+          "runtime_ms": 21.40899183228612
+        },
+        "optical-infrared": {
+          "num_pairs": 100,
+          "matches": 620.29,
+          "NCM": 243.93,
+          "Pre": 0.30113303599337615,
+          "SR": 0.9,
+          "RMSE": 3.860074744104241,
+          "runtime_ms": 18.744181286310777
+        },
+        "optical-map": {
+          "num_pairs": 100,
+          "matches": 294.01,
+          "NCM": 123.63,
+          "Pre": 0.33598645976028735,
+          "SR": 0.75,
+          "RMSE": 4.822754154196199,
+          "runtime_ms": 21.894978968193755
+        },
+        "optical-optical": {
+          "num_pairs": 100,
+          "matches": 800.4,
+          "NCM": 402.15,
+          "Pre": 0.4162858630869358,
+          "SR": 0.95,
+          "RMSE": 3.5327635236035153,
+          "runtime_ms": 22.917146753752604
+        },
+        "optical-sar": {
+          "num_pairs": 100,
+          "matches": 437.48,
+          "NCM": 85.87,
+          "Pre": 0.15838487169263196,
+          "SR": 0.7,
+          "RMSE": 5.279582099082323,
+          "runtime_ms": 20.947559458436444
+        },
+        "optical_day-optical_night": {
+          "num_pairs": 100,
+          "matches": 477.13,
+          "NCM": 204.72,
+          "Pre": 0.3050329266862536,
+          "SR": 0.74,
+          "RMSE": 4.917127262973751,
+          "runtime_ms": 21.976295894710347
+        }
+      }
+    },
+    "enhanced_coarse": {
+      "overall": {
+        "num_pairs": 600,
+        "matches": 643.99,
+        "NCM": 195.78666666666666,
+        "Pre": 0.24704501993086816,
+        "SR": 0.8416666666666667,
+        "RMSE": 4.2889439340061335,
+        "runtime_ms": 129.96637276994684
+      },
+      "by_modality_pair": {
+        "optical-depth": {
+          "num_pairs": 100,
+          "matches": 684.61,
+          "NCM": 201.46,
+          "Pre": 0.27224736399638344,
+          "SR": 0.93,
+          "RMSE": 3.695149698130617,
+          "runtime_ms": 135.775223049568
+        },
+        "optical-infrared": {
+          "num_pairs": 100,
+          "matches": 721.59,
+          "NCM": 220.82,
+          "Pre": 0.24491299910720943,
+          "SR": 0.85,
+          "RMSE": 4.227283227753569,
+          "runtime_ms": 114.34093201183714
+        },
+        "optical-map": {
+          "num_pairs": 100,
+          "matches": 484.63,
+          "NCM": 168.1,
+          "Pre": 0.2860988128305212,
+          "SR": 0.78,
+          "RMSE": 4.682483931653277,
+          "runtime_ms": 135.93278396176174
+        },
+        "optical-optical": {
+          "num_pairs": 100,
+          "matches": 817.08,
+          "NCM": 313.89,
+          "Pre": 0.3119695869561463,
+          "SR": 0.97,
+          "RMSE": 3.3897663398699462,
+          "runtime_ms": 132.9384758346714
+        },
+        "optical-sar": {
+          "num_pairs": 100,
+          "matches": 584.35,
+          "NCM": 85.88,
+          "Pre": 0.12856968651729417,
+          "SR": 0.77,
+          "RMSE": 4.855314617983326,
+          "runtime_ms": 127.65564756118692
+        },
+        "optical_day-optical_night": {
+          "num_pairs": 100,
+          "matches": 571.68,
+          "NCM": 184.57,
+          "Pre": 0.23847167017765464,
+          "SR": 0.75,
+          "RMSE": 4.883665788646063,
+          "runtime_ms": 133.1551742006559
+        }
+      }
+    },
+    "base_full": {
+      "overall": {
+        "num_pairs": 600,
+        "matches": 3669.076666666667,
+        "NCM": 1428.2133333333334,
+        "Pre": 0.36180910108224407,
+        "SR": 0.9516666666666667,
+        "RMSE": 2.86488777994785,
+        "runtime_ms": 93.90543748876856
+      },
+      "by_modality_pair": {
+        "optical-depth": {
+          "num_pairs": 100,
+          "matches": 3805.02,
+          "NCM": 1562.99,
+          "Pre": 0.37010911622361803,
+          "SR": 0.95,
+          "RMSE": 3.009312694801402,
+          "runtime_ms": 89.27894190885127
+        },
+        "optical-infrared": {
+          "num_pairs": 100,
+          "matches": 4021.89,
+          "NCM": 1342.92,
+          "Pre": 0.33881369686732543,
+          "SR": 0.98,
+          "RMSE": 2.7179269174331036,
+          "runtime_ms": 83.81216114270501
+        },
+        "optical-map": {
+          "num_pairs": 100,
+          "matches": 2338.5,
+          "NCM": 1259.92,
+          "Pre": 0.4405549281203209,
+          "SR": 0.86,
+          "RMSE": 3.3352117371079317,
+          "runtime_ms": 96.04311215225607
+        },
+        "optical-optical": {
+          "num_pairs": 100,
+          "matches": 4312.97,
+          "NCM": 2221.12,
+          "Pre": 0.49343670695180064,
+          "SR": 1.0,
+          "RMSE": 2.179804065223764,
+          "runtime_ms": 105.59391684248112
+        },
+        "optical-sar": {
+          "num_pairs": 100,
+          "matches": 3722.64,
+          "NCM": 686.8,
+          "Pre": 0.17491703693816776,
+          "SR": 0.95,
+          "RMSE": 3.306010010779368,
+          "runtime_ms": 91.30157659179531
+        },
+        "optical_day-optical_night": {
+          "num_pairs": 100,
+          "matches": 3813.44,
+          "NCM": 1495.53,
+          "Pre": 0.3530231213922317,
+          "SR": 0.97,
+          "RMSE": 2.6410612543415293,
+          "runtime_ms": 97.40291629452258
+        }
+      }
+    },
+    "enhanced_full": {
+      "overall": {
+        "num_pairs": 600,
+        "matches": 4258.846666666666,
+        "NCM": 1240.2366666666667,
+        "Pre": 0.2817990092675079,
+        "SR": 0.965,
+        "RMSE": 2.847638305323498,
+        "runtime_ms": 206.58305387342503
+      },
+      "by_modality_pair": {
+        "optical-depth": {
+          "num_pairs": 100,
+          "matches": 4333.43,
+          "NCM": 1396.02,
+          "Pre": 0.30349752503595423,
+          "SR": 0.98,
+          "RMSE": 2.8847490407973693,
+          "runtime_ms": 222.99321773461998
+        },
+        "optical-infrared": {
+          "num_pairs": 100,
+          "matches": 4427.25,
+          "NCM": 1116.67,
+          "Pre": 0.26029700126954264,
+          "SR": 0.97,
+          "RMSE": 2.879470241160058,
+          "runtime_ms": 160.38546065217815
+        },
+        "optical-map": {
+          "num_pairs": 100,
+          "matches": 2998.62,
+          "NCM": 1223.06,
+          "Pre": 0.3524414456636537,
+          "SR": 0.91,
+          "RMSE": 3.1383597674676262,
+          "runtime_ms": 222.87335170432925
+        },
+        "optical-optical": {
+          "num_pairs": 100,
+          "matches": 4572.1,
+          "NCM": 1735.29,
+          "Pre": 0.36895373035461726,
+          "SR": 1.0,
+          "RMSE": 2.2252731046082164,
+          "runtime_ms": 217.31255013728514
+        },
+        "optical-sar": {
+          "num_pairs": 100,
+          "matches": 4590.58,
+          "NCM": 631.53,
+          "Pre": 0.13547387998884397,
+          "SR": 0.95,
+          "RMSE": 3.3340873805778646,
+          "runtime_ms": 192.97955564572476
+        },
+        "optical_day-optical_night": {
+          "num_pairs": 100,
+          "matches": 4631.1,
+          "NCM": 1338.85,
+          "Pre": 0.2701304732924355,
+          "SR": 0.98,
+          "RMSE": 2.623890297329852,
+          "runtime_ms": 222.95418736641295
+        }
+      }
+    }
+  },
+  "enhanced_minus_base": {
+    "coarse": {
+      "matches": 130.58500000000004,
+      "NCM": -9.055000000000007,
+      "Pre": -0.06206247147214508,
+      "SR": 0.01666666666666672,
+      "RMSE": -0.07650797889588645,
+      "runtime_ms": 108.65151373766517,
+      "relative_NCM": 0.9557951263170741,
+      "relative_Pre": 0.7992204226741686
+    },
+    "full": {
+      "matches": 589.7699999999995,
+      "NCM": -187.9766666666667,
+      "Pre": -0.08001009181473617,
+      "SR": 0.013333333333333308,
+      "RMSE": -0.01724947462435189,
+      "runtime_ms": 112.67761638465647,
+      "relative_NCM": 0.8683833414242503,
+      "relative_Pre": 0.7788610303737251
+    }
+  },
+  "checkpoint_hparams": {
+    "model_name": "physical_v2_core",
+    "slim_checkpoint": "ckpt/megadepth_19epochs.ckpt",
+    "learning_rate": 0.0001,
+    "physical_learning_rate": 1e-05,
+    "weight_decay": 0.01,
+    "max_epochs": 20,
+    "coarse_scale": 8,
+    "chunk_size": 256,
+    "gradient_log_interval": 200,
+    "polar_chunk_size": 512,
+    "feature_visualization_interval": 20,
+    "feature_visualization_dir": "logs/tb_logs/physical_v2_1_4_googleearth_single/physical_v2_1_4_core_googleearth_rectified_d70_rot45_lg_img512_gpu0_bs6_ebs6_seed66_ep20/paper_logs/latest_feature_maps"
+  }
+}

@@ -1,14 +1,23 @@
 import hashlib
 import json
+import math
 from pathlib import Path
 
+import cv2
+import numpy as np
+import pytest
 import torch
 from torch.nn import functional as F
 
+from src.datasets.remote_sensing import (
+    LGPhotometricAugmentation,
+    RemoteSensingHomographyDataset,
+)
 from src.physical.v2_losses import (
     positive_dual_softmax,
     recovery_and_preservation_loss,
 )
+from src.physical.v2_lightning import PhysicalV2Module
 from src.physical.matching import PPMatchingLoss
 from src.physical.v2_models import (
     DensePolarDescriptor,
@@ -17,10 +26,188 @@ from src.physical.v2_models import (
     build_physical_v2_encoder,
     safe_axial_angle,
 )
+from src.physical.v1_models import ParametricSteerableGaborBank
 from src.physical.v2_visualization import write_latest_feature_maps
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_v213_minimum_region_and_rotation_contract(tmp_path):
+    image_path = tmp_path / "image.png"
+    image = (torch.arange(64 * 64).reshape(64, 64) % 255).numpy().astype("uint8")
+    cv2.imwrite(str(image_path), image)
+    manifest = tmp_path / "manifest.jsonl"
+    manifest.write_text(
+        json.dumps(
+            {
+                "id": "sample",
+                "dataset": "test",
+                "subset": "test",
+                "split": "train",
+                "mode": "single_synth",
+                "image": str(image_path),
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    dataset = RemoteSensingHomographyDataset(
+        manifest,
+        image_size=64,
+        mode="train",
+        homography_difficulty=0.7,
+        rotation_limit_degrees=45.0,
+        minimum_region_sampler=True,
+        deterministic_train=True,
+    )
+    assert dataset.minimum_region_ratio == pytest.approx(0.3)
+    assert dataset.minimum_region_size == pytest.approx(19.2)
+
+    angles = []
+    for seed in range(128):
+        homography = dataset._sample_roll_h(np.random.default_rng(seed))
+        angles.append(abs(math.degrees(math.atan2(homography[1, 0], homography[0, 0]))))
+    assert max(angles) <= 45.0 + 1e-5
+    assert max(angles) > 40.0
+
+
+@pytest.mark.parametrize(
+    "variant", RemoteSensingHomographyDataset.DEFAULT_AUG_VARIANTS
+)
+def test_v214_valid_source_quad_rectification_has_no_padding_and_correct_h(
+    tmp_path, variant
+):
+    image_path = tmp_path / "constant.png"
+    image = np.full((192, 224), 127, dtype=np.uint8)
+    assert cv2.imwrite(str(image_path), image)
+    manifest = tmp_path / "manifest.jsonl"
+    manifest.write_text(
+        json.dumps(
+            {
+                "id": f"sample-{variant}",
+                "dataset": "test",
+                "subset": "test",
+                "split": "train",
+                "mode": "single_synth",
+                "image": str(image_path),
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    dataset = RemoteSensingHomographyDataset(
+        manifest,
+        image_size=64,
+        mode="train",
+        homography_difficulty=0.7,
+        rotation_limit_degrees=45.0,
+        minimum_region_sampler=True,
+        valid_crop_rectification=True,
+        deterministic_train=True,
+        aug_variants=[variant],
+        seed=66,
+    )
+
+    sample = dataset[0]
+    repeated = dataset[0]
+    assert torch.equal(sample["image0"], repeated["image0"])
+    assert torch.equal(sample["image1"], repeated["image1"])
+    assert sample["image0"].min() > 0.45
+    assert sample["image1"].min() > 0.45
+
+    quad0 = sample["remote_source_quad0"].numpy()
+    quad1 = sample["remote_source_quad1"].numpy()
+    for quad in (quad0, quad1):
+        assert cv2.isContourConvex(quad.astype(np.float32))
+        assert quad[:, 0].min() >= 2.0
+        assert quad[:, 0].max() <= image.shape[1] - 3.0
+        assert quad[:, 1].min() >= 2.0
+        assert quad[:, 1].max() <= image.shape[0] - 3.0
+
+    destination = np.array(
+        [[0, 0], [63, 0], [63, 63], [0, 63]], dtype=np.float32
+    )
+    source_to_view0 = cv2.getPerspectiveTransform(quad0, destination)
+    source_to_view1 = cv2.getPerspectiveTransform(quad1, destination)
+    expected = source_to_view1 @ np.linalg.inv(source_to_view0)
+    expected /= expected[2, 2]
+    actual = sample["H_0to1"].numpy()
+    actual /= actual[2, 2]
+    assert np.allclose(actual, expected, rtol=1e-4, atol=1e-4)
+
+
+def test_v213_lg_photometric_profile_is_deterministic_and_configured():
+    augmentation = LGPhotometricAugmentation()
+    transform = augmentation.transform
+    assert transform.p == pytest.approx(0.95)
+    assert [item.p for item in transform.transforms] == pytest.approx(
+        [0.1, 0.1, 0.1, 0.1, 0.1, 0.5, 0.2]
+    )
+    image = (torch.arange(64 * 64).reshape(64, 64) % 255).numpy().astype("uint8")
+    first = augmentation(image, seed=66)
+    repeated = augmentation(image, seed=66)
+    assert np.array_equal(first, repeated)
+    assert any(
+        not np.array_equal(image, augmentation(image, seed=seed))
+        for seed in range(10)
+    )
+
+
+def test_v214_lg_photometric_guard_retries_and_rejects_blackout():
+    class ControlledTransform:
+        def __init__(self, outputs):
+            self.outputs = list(outputs)
+            self.calls = 0
+            self.seeds = []
+
+        def set_random_seed(self, seed):
+            self.seeds.append(seed)
+
+        def __call__(self, image):
+            output = self.outputs[min(self.calls, len(self.outputs) - 1)]
+            self.calls += 1
+            return {"image": cv2.cvtColor(output, cv2.COLOR_GRAY2RGB)}
+
+    source = np.full((32, 32), 80, dtype=np.uint8)
+    blacked_out = np.zeros_like(source)
+    usable_low_light = np.full_like(source, 40)
+    augmentation = LGPhotometricAugmentation()
+    transform = ControlledTransform([blacked_out, usable_low_light])
+    augmentation.transform = transform
+
+    result = augmentation(source, seed=66)
+    assert np.array_equal(result, usable_low_light)
+    assert transform.calls == 2
+    assert transform.seeds == [66, 66 + 104729]
+
+    fallback = LGPhotometricAugmentation()
+    fallback_transform = ControlledTransform([blacked_out])
+    fallback.transform = fallback_transform
+    assert np.array_equal(fallback(source, seed=66), source)
+    assert fallback_transform.calls == fallback.MAX_ATTEMPTS
+
+
+def test_v213_gabor_response_fp32_has_finite_parameter_gradients():
+    bank = ParametricSteerableGaborBank(response_fp32=True)
+    image = torch.rand(1, 1, 32, 32, dtype=torch.bfloat16)
+    even, odd, amplitude = bank(image)
+    assert even.dtype == odd.dtype == amplitude.dtype == torch.float32
+    (even.square().mean() + odd.square().mean() + amplitude.mean()).backward()
+    assert all(
+        parameter.grad is not None and torch.isfinite(parameter.grad).all()
+        for parameter in bank.physical_parameters()
+    )
+
+
+def test_v213_gabor_gradient_guard_preserves_finite_elements():
+    module = PhysicalV2Module.__new__(PhysicalV2Module)
+    module._gabor_sanitized_gradients = {}
+    module._gabor_gradient_warning_emitted = True
+    gradient = torch.tensor([1.5, float("nan"), float("inf"), -2.0])
+    sanitized = module._sanitize_gabor_gradient("gabor.test", gradient)
+    assert torch.equal(sanitized, torch.tensor([1.5, 0.0, 0.0, -2.0]))
+    assert module._gabor_sanitized_gradients == {"gabor.test": 2}
 
 
 def test_v2_manifest_is_exact_v1_selection():
@@ -225,7 +412,7 @@ def test_latest_feature_visualization_overwrites_without_history(tmp_path):
         "physical_gates.png",
     ]
     metadata = json.loads((tmp_path / "latest_step.json").read_text(encoding="utf-8"))
-    assert metadata["version"] == "Physical Encoder V2.1.2"
+    assert metadata["version"] == "Physical Encoder V2.1.4"
     assert metadata["global_step"] == 11
     assert metadata["batch_idx"] == 11
     assert metadata["remote_id"] == "sample-0"

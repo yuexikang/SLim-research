@@ -81,6 +81,10 @@ class PhysicalV0DataModule(pl.LightningDataModule):
         selected_train_rows=None,
         train_one_variant_per_row=False,
         val_one_variant_per_row=False,
+        rotation_limit_degrees=35.0,
+        minimum_region_sampler=False,
+        photometric_augmentation=None,
+        valid_crop_rectification=False,
     ):
         super().__init__()
         self.train_manifest = Path(train_manifest)
@@ -100,6 +104,10 @@ class PhysicalV0DataModule(pl.LightningDataModule):
         )
         self.train_one_variant_per_row = bool(train_one_variant_per_row)
         self.val_one_variant_per_row = bool(val_one_variant_per_row)
+        self.rotation_limit_degrees = float(rotation_limit_degrees)
+        self.minimum_region_sampler = bool(minimum_region_sampler)
+        self.photometric_augmentation = photometric_augmentation
+        self.valid_crop_rectification = bool(valid_crop_rectification)
         self.variants = list(RemoteSensingHomographyDataset.DEFAULT_AUG_VARIANTS)
         self.train_dataset = None
         self.val_dataset = None
@@ -138,6 +146,10 @@ class PhysicalV0DataModule(pl.LightningDataModule):
             seed=self.seed,
             deterministic_train=True,
             one_variant_per_row=self.train_one_variant_per_row,
+            rotation_limit_degrees=self.rotation_limit_degrees,
+            minimum_region_sampler=self.minimum_region_sampler,
+            photometric_augmentation=self.photometric_augmentation,
+            valid_crop_rectification=self.valid_crop_rectification,
         )
         self.val_dataset = RemoteSensingHomographyDataset(
             manifest_path=self.val_manifest,
@@ -149,6 +161,10 @@ class PhysicalV0DataModule(pl.LightningDataModule):
             aug_variants=self.variants,
             seed=self.seed,
             one_variant_per_row=self.val_one_variant_per_row,
+            rotation_limit_degrees=self.rotation_limit_degrees,
+            minimum_region_sampler=self.minimum_region_sampler,
+            photometric_augmentation=None,
+            valid_crop_rectification=self.valid_crop_rectification,
         )
         if self.val_one_variant_per_row:
             self.full_val_dataset = RemoteSensingHomographyDataset(
@@ -160,6 +176,10 @@ class PhysicalV0DataModule(pl.LightningDataModule):
                 left_identity=True,
                 aug_variants=self.variants,
                 seed=self.seed,
+                rotation_limit_degrees=self.rotation_limit_degrees,
+                minimum_region_sampler=self.minimum_region_sampler,
+                photometric_augmentation=None,
+                valid_crop_rectification=self.valid_crop_rectification,
             )
         else:
             self.full_val_dataset = self.val_dataset

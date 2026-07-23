@@ -1,0 +1,27 @@
+{
+  "stage": "nonfinite_gradient",
+  "epoch": 0,
+  "global_step": 11,
+  "batch_idx": 11,
+  "remote_ids": [
+    "single/optical/a26ea23dcf18",
+    "single/optical/bc6b637e7526",
+    "single/optical/fcea699f1c6a",
+    "single/optical/7c96524c62ff",
+    "single/optical/24e0d3cae42d",
+    "single/optical/c7bd05023692"
+  ],
+  "variants": [
+    "roll",
+    "pitch",
+    "pitch",
+    "roll",
+    "pitch",
+    "scale"
+  ],
+  "parameters": [
+    "gabor.delta_lambda",
+    "gabor.delta_sigma",
+    "gabor.gamma_logits"
+  ]
+}

@@ -21,7 +21,7 @@ from .v2_visualization import write_latest_feature_maps
 
 
 class PhysicalV2Module(pl.LightningModule):
-    IMPLEMENTATION_VERSION = "2.1.2"
+    IMPLEMENTATION_VERSION = "2.1.4"
 
     def __init__(
         self,
@@ -79,6 +79,29 @@ class PhysicalV2Module(pl.LightningModule):
         self._gradient_contract_checked = False
         self._active_batch_context = {}
         self._last_visualized_step = None
+        self._gabor_sanitized_gradients = {}
+        self._gabor_gradient_warning_emitted = False
+        for name, parameter in self.encoder.gabor.named_parameters():
+            if parameter.requires_grad:
+                parameter.register_hook(
+                    lambda gradient, parameter_name=f"gabor.{name}": self._sanitize_gabor_gradient(
+                        parameter_name, gradient
+                    )
+                )
+
+    def _sanitize_gabor_gradient(self, name, gradient):
+        finite = torch.isfinite(gradient)
+        invalid_count = int((~finite).sum().item())
+        if invalid_count:
+            self._gabor_sanitized_gradients[name] = invalid_count
+            if not self._gabor_gradient_warning_emitted:
+                warnings.warn(
+                    "Non-finite Gabor scalar gradients were replaced with zero; "
+                    "see train/gabor_sanitized_grad_elements."
+                )
+                self._gabor_gradient_warning_emitted = True
+            gradient = torch.where(finite, gradient, torch.zeros_like(gradient))
+        return gradient
 
     def train(self, mode=True):
         super().train(mode)
@@ -298,6 +321,7 @@ class PhysicalV2Module(pl.LightningModule):
             warnings.warn(f"Physical V2 feature visualization failed: {exc}")
 
     def training_step(self, batch, batch_idx):
+        self._gabor_sanitized_gradients = {}
         self._active_batch_context = {
             "batch_idx": int(batch_idx),
             "remote_ids": self._batch_values(batch, "remote_id"),
@@ -403,6 +427,13 @@ class PhysicalV2Module(pl.LightningModule):
             self._fail_nonfinite(
                 "frozen_slim_gradient", {"parameters": frozen_with_grad}
             )
+        self.log(
+            "train/gabor_sanitized_grad_elements",
+            float(sum(self._gabor_sanitized_gradients.values())),
+            on_step=True,
+            on_epoch=False,
+            sync_dist=True,
+        )
         self._gradient_contract_checked = True
 
     def on_before_zero_grad(self, optimizer):

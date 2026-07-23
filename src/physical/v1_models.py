@@ -41,7 +41,13 @@ class FixedLocalDivisiveNormalization(nn.Module):
 
 
 class ParametricSteerableGaborBank(nn.Module):
-    def __init__(self, orientations=8, bank_mode="parameterized", eps=1e-6):
+    def __init__(
+        self,
+        orientations=8,
+        bank_mode="parameterized",
+        eps=1e-6,
+        response_fp32=False,
+    ):
         super().__init__()
         if int(orientations) != 8:
             raise ValueError("Physical V1 currently requires exactly eight orientations.")
@@ -50,6 +56,7 @@ class ParametricSteerableGaborBank(nn.Module):
         self.orientations = int(orientations)
         self.bank_mode = str(bank_mode)
         self.eps = float(eps)
+        self.response_fp32 = bool(response_fp32)
         self.register_buffer(
             "base_wavelengths", torch.tensor([3.0, 6.0, 12.0]), persistent=True
         )
@@ -114,13 +121,24 @@ class ParametricSteerableGaborBank(nn.Module):
         even_responses = []
         odd_responses = []
         for frequency in range(3):
-            with _autocast_disabled(image):
-                even_kernel, odd_kernel = self.kernels_for_frequency(frequency)
-            kernels = torch.cat([even_kernel, odd_kernel], dim=0).to(
-                device=image.device, dtype=image.dtype
-            )
-            padding = int(self.kernel_sizes[frequency]) // 2
-            response = F.conv2d(F.pad(image, (padding,) * 4, mode="reflect"), kernels)
+            if self.response_fp32:
+                with _autocast_disabled(image):
+                    even_kernel, odd_kernel = self.kernels_for_frequency(frequency)
+                    kernels = torch.cat([even_kernel, odd_kernel], dim=0).float()
+                    padding = int(self.kernel_sizes[frequency]) // 2
+                    response = F.conv2d(
+                        F.pad(image.float(), (padding,) * 4, mode="reflect"), kernels
+                    )
+            else:
+                with _autocast_disabled(image):
+                    even_kernel, odd_kernel = self.kernels_for_frequency(frequency)
+                kernels = torch.cat([even_kernel, odd_kernel], dim=0).to(
+                    device=image.device, dtype=image.dtype
+                )
+                padding = int(self.kernel_sizes[frequency]) // 2
+                response = F.conv2d(
+                    F.pad(image, (padding,) * 4, mode="reflect"), kernels
+                )
             even, odd = response.split(self.orientations, dim=1)
             even_responses.append(even)
             odd_responses.append(odd)
