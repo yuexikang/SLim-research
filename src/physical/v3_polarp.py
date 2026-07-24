@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Dict, List, Tuple
 
 import cv2
@@ -23,6 +23,7 @@ class PolarPConfig:
     keypoint_min_distance: float = 4.0
     keypoint_block_size: int = 7
     descriptor_normalization: str = "none"
+    half_turn_mode: str = "psd"
 
 
 def detect_fixed_keypoints(
@@ -150,6 +151,38 @@ def _descriptor_for_orientation(
     base_direction: float,
     config: PolarPConfig,
 ) -> Tuple[np.ndarray, Dict[str, float]]:
+    if config.half_turn_mode == "symmetric":
+        raw_config = replace(
+            config,
+            half_turn_mode="none",
+            descriptor_normalization="none",
+        )
+        descriptor0, _ = _descriptor_for_orientation(
+            magnitude_patch,
+            orientation_patch,
+            layout,
+            base_direction,
+            raw_config,
+        )
+        descriptor1, _ = _descriptor_for_orientation(
+            magnitude_patch,
+            orientation_patch,
+            layout,
+            base_direction + math.pi,
+            raw_config,
+        )
+        descriptor = _normalize_descriptor(
+            (descriptor0 + descriptor1) * 0.5,
+            config.descriptor_normalization,
+        )
+        return descriptor.astype(np.float32), {
+            "base_direction": float(base_direction),
+            "psd_swapped": 0.0,
+            "symmetric_half_turn": 1.0,
+        }
+    if config.half_turn_mode not in {"psd", "none"}:
+        raise ValueError(f"Unknown half-turn mode: {config.half_turn_mode}")
+
     radial = layout["radial"]
     theta = layout["theta"]
     spatial_bin = np.mod(
@@ -213,7 +246,7 @@ def _descriptor_for_orientation(
     ) / 2.0
 
     psd_swapped = False
-    if config.rotation_invariant:
+    if config.rotation_invariant and config.half_turn_mode == "psd":
         half = config.spatial_bins // 2
         first = outer[:, :half, :]
         second = outer[:, half:, :]
@@ -236,6 +269,7 @@ def _descriptor_for_orientation(
     diagnostics = {
         "base_direction": float(base_direction),
         "psd_swapped": float(psd_swapped),
+        "symmetric_half_turn": 0.0,
     }
     return descriptor.astype(np.float32), diagnostics
 

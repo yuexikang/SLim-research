@@ -1,0 +1,6 @@
+{
+  "model": "rectconv_p5",
+  "best_checkpoint": "/home/disk1/SLiM/logs/tb_logs/physical_v3_p5_pilot/rectconv_p5_smoke/checkpoints/best-00-0.0062.ckpt",
+  "best_val_r0": 0.006198347080498934,
+  "last_checkpoint": "/home/disk1/SLiM/logs/tb_logs/physical_v3_p5_pilot/rectconv_p5_smoke/checkpoints/last.ckpt"
+}

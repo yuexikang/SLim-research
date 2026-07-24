@@ -1,6 +1,6 @@
 # Physical Encoder V3 设计初稿
 
-> 状态：结构草案。当前可运行实现为 V3.0.1 无训练基线，版本变更见[Physical Encoder V3 版本更新记录](./Physical%20Encoder%20V3%20版本更新记录.md)。本文只确定冻结 HIMO、紧凑 Physical State 和 Dense Polar Physical Encoder，不锁定最终后端网络，也不进入 SLiM 融合实现。
+> 状态：结构草案。当前可运行实现为 V3.0.2 无训练消融与GT Oracle诊断，结果见[Physical Encoder V3.0.2 无训练消融实验报告](./Physical%20Encoder%20V3.0.2%20无训练消融实验报告.md)，版本变更见[Physical Encoder V3 版本更新记录](./Physical%20Encoder%20V3%20版本更新记录.md)。本文只确定冻结 HIMO、紧凑 Physical State 和 Dense Polar Physical Encoder，不锁定最终后端网络，也不进入 SLiM 融合实现。
 
 ## 1. 出发点
 

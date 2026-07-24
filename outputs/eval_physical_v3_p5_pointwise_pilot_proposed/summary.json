@@ -1,0 +1,63 @@
+{
+  "implementation_version": "V3.0.3",
+  "evaluation": "physical_v3_p5_dense_mutual_nn",
+  "model": "pointwise_p5",
+  "checkpoint": "logs/tb_logs/physical_v3_p5_pilot/pointwise_p5_googleearth_ratio1_seed66_ep3/checkpoints/best-00-0.0043.ckpt",
+  "selected_rows": "outputs/eval_physical_v3_0_2_ablations_proposed/selected_rows.jsonl",
+  "device": "cuda:3",
+  "selected_gpu": {
+    "index": 3,
+    "memory_free_mib": 17363,
+    "memory_total_mib": 24564,
+    "utilization_percent": 92
+  },
+  "image_size": 512,
+  "trainable_parameters": 6816,
+  "overall": {
+    "num_pairs": 80,
+    "NCM": 0.3,
+    "Pre": 0.000253938096633241,
+    "SR": 0.0,
+    "RMSE": 10.0,
+    "mean_matches": 1066.8,
+    "mean_runtime_ms": 1065.2091683237813
+  },
+  "by_modality_pair": {
+    "optical-lidar": {
+      "num_pairs": 20,
+      "NCM": 0.6,
+      "Pre": 0.0004981785880125514,
+      "SR": 0.0,
+      "RMSE": 10.0,
+      "mean_matches": 1222.55,
+      "mean_runtime_ms": 672.8349730488844
+    },
+    "optical-map": {
+      "num_pairs": 20,
+      "NCM": 0.2,
+      "Pre": 0.00017391380156949984,
+      "SR": 0.0,
+      "RMSE": 10.0,
+      "mean_matches": 1125.25,
+      "mean_runtime_ms": 789.66486469144
+    },
+    "optical-sar": {
+      "num_pairs": 20,
+      "NCM": 0.35,
+      "Pre": 0.00029684351755016383,
+      "SR": 0.0,
+      "RMSE": 10.0,
+      "mean_matches": 1161.65,
+      "mean_runtime_ms": 996.2446267600171
+    },
+    "sar-lidar": {
+      "num_pairs": 20,
+      "NCM": 0.05,
+      "Pre": 4.6816479400749066e-05,
+      "SR": 0.0,
+      "RMSE": 10.0,
+      "mean_matches": 757.75,
+      "mean_runtime_ms": 1802.0922087947838
+    }
+  }
+}

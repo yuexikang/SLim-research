@@ -1,0 +1,6 @@
+{
+  "model": "rectconv_p5",
+  "best_checkpoint": "/home/disk1/SLiM/logs/tb_logs/physical_v3_p5_pilot/rectconv_p5_googleearth_ratio1_seed66_ep3/checkpoints/best-02-0.0752.ckpt",
+  "best_val_r0": 0.0751853957772255,
+  "last_checkpoint": "/home/disk1/SLiM/logs/tb_logs/physical_v3_p5_pilot/rectconv_p5_googleearth_ratio1_seed66_ep3/checkpoints/last.ckpt"
+}

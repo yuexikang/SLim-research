@@ -1,6 +1,129 @@
 # Physical Encoder V3 版本更新记录
 
-> 当前实现：V3.0.1。基础结构规范见[Physical Encoder V3](./Physical%20Encoder%20V3.md)。本文件只记录实现修订，不重复完整设计。
+> 当前实现：V3.0.3。基础结构规范见[Physical Encoder V3](./Physical%20Encoder%20V3.md)。本文件只记录实现修订，不重复完整设计。
+
+## V3.0.3
+
+### 更新摘要
+
+- 新增可训练的Pointwise-P5与参数量匹配的RectConv-P5局部编码消融。
+- 使用相同固定训练样本、优化配置和Proposed 80对测试子集，单独检验空间聚合的作用。
+- 本版本只进行1%数据、3 epoch结构筛选，不替代后续30%正式实验，也不改变V3.0.0至V3.0.2行为。
+
+### 详细内容
+
+#### 设计与协议
+
+冻结HIMO并构造
+`[cos(2phi), sin(2phi), odd, even, r_oe]`五通道状态。
+Pointwise仅使用`1x1`卷积；RectConv使用`5x5 + 3x3 + 1x1`卷积。
+两者分别为6816和6768个可训练参数，均输出128维、64x64的L2描述子。
+
+训练使用GoogleEarth固定1%基础影像、seed 66、3 epoch和相同在线扰动。
+测试复用V3.0.2 Proposed固定80对，采用dense cosine mutual-nearest-neighbor。
+
+#### 运行与输出
+
+- Pointwise最佳`val R@0=0.00435`；
+- RectConv最佳`val R@0=0.07519`；
+- Proposed上Pointwise为`NCM=0.30/Pre=0.025%/SR=0%`；
+- Proposed上RectConv为`NCM=4.80/Pre=0.424%/SR=3.75%`；
+- 完整分析见
+  `document/Physical Encoder V3.0.3 P5局部编码消融实验报告.md`。
+
+#### 兼容性
+
+V3.0.3使用独立模型、训练入口和测评入口，不修改冻结HIMO、PolarP、
+V3.0.2消融协议及已有结果。旧checkpoint与旧命令不受影响。
+
+#### 验证状态
+
+- 3项P5单元测试通过；
+- Pointwise与RectConv GPU训练smoke通过；
+- 两条路线均完成相同1%数据、3 epoch pilot；
+- 两条路线均完成相同Proposed 80对测试；
+- 尚未运行30%正式训练和Expanded MRSI测试。
+
+### 文件变更
+
+#### 新增
+
+- `src/physical/v3_p5_models.py`
+- `src/physical/v3_p5_lightning.py`
+- `train_physical_v3_p5.py`
+- `test/evaluate_physical_v3_p5.py`
+- `test/test_physical_v3_p5.py`
+- `document/Physical Encoder V3.0.3 P5局部编码消融实验报告.md`
+
+#### 修改
+
+- `document/Physical Encoder V3 版本更新记录.md`
+
+#### 删除
+
+- 无
+
+#### 重命名
+
+- 无
+
+## V3.0.2
+
+### 更新摘要
+
+- 新增无需训练的分层消融套件和GT Oracle故障分解。
+- 新增NoPSD、SymmetricHalfTurn及Odd/Even固定分支。
+- 自动选择空闲显存最多的可见GPU，并保存设备快照和固定抽样记录。
+- V3.0.1 CodeExact默认行为保持不变，不增加任何可训练参数。
+
+### 详细内容
+
+#### 诊断指标
+
+除NCM、Precision、SR和RMSE外，新增：
+
+- Detector Repeatability@3/@5；
+- descriptor Oracle R@1/@5/@10和MRR@10；
+- 正样本距离、top-10 hard-negative距离与margin；
+- unique-target ratio和maximum target fan-in；
+- IMO轴向方向误差；
+- Odd、Even、`r_oe`与原始`vIMO`对应相关性。
+
+#### 固定消融
+
+统一在分层相同影像对上比较raw/L2/Root、单/多主方向、PSD/NoPSD/
+SymmetricHalfTurn，以及Odd-only、Even-only、Hard和Soft O/E magnitude。
+SymmetricHalfTurn使用$\phi$与$\phi+\pi$两个无PSD描述子的均值，属于V3扩展，
+不宣称为原始PolarP。
+
+#### 文件清单
+
+新增：
+
+- `src/physical/v3_ablation.py`
+- `test/evaluate_physical_v3_ablations.py`
+- `test/report_physical_v3_ablations.py`
+- `test/test_physical_v3_ablations.py`
+- `document/Physical Encoder V3.0.2 无训练消融实验计划.md`
+
+修改：
+
+- `src/physical/v3_himo.py`
+- `src/physical/v3_polarp.py`
+- `document/Physical Encoder V3.md`
+- `document/Physical Encoder V3 版本更新记录.md`
+
+#### 正式验证
+
+- 在Proposed测试集按四种模态各固定抽取20对，共80对；
+- seed为66，所有10条路线使用完全相同的影像对和HIMO状态；
+- 启动时自动选择物理GPU 1，空闲显存22201 MiB；
+- 10个单元测试和4模态smoke test通过；
+- 正式运行80对耗时485.96秒，无NaN或中断；
+- 原始输出保存到
+  `outputs/eval_physical_v3_0_2_ablations_proposed/`；
+- 实验报告保存为
+  `document/Physical Encoder V3.0.2 无训练消融实验报告.md`。
 
 ## V3.0.1
 

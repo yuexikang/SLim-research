@@ -1,0 +1,6 @@
+epoch,lr-AdamW,model/trainable_parameters,step,train/loss_pp_epoch,train/loss_pp_step,train/peak_memory_gib,train/samples_per_second,val/all_hard_negative_similarity,val/all_margin,val/all_positive_similarity,val/all_r0,val/all_r1,val/loss_pp,val/scale_hard_negative_similarity,val/scale_margin,val/scale_positive_similarity,val/scale_r0,val/scale_r1,val_r0
+,0.0001,,0,,,,,,,,,,,,,,,,
+0,,,0,,15.133110046386719,,,,,,,,,,,,,,
+0,,,1,,15.88548469543457,,,,,,,,,,,,,,
+0,,,1,,,,,0.9830130338668823,-0.05477224290370941,0.9282408356666565,0.006198347080498934,0.013429751619696617,16.110939025878906,0.9830130338668823,-0.05477224290370941,0.9282408356666565,0.006198347080498934,0.013429751619696617,0.006198347080498934
+0,,6768.0,1,15.509297370910645,,0.17522096633911133,1.5009729862213135,,,,,,,,,,,,

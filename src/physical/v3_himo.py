@@ -12,7 +12,7 @@ from torch.nn import functional as F
 
 
 HIMO_SOURCE_COMMIT = "884297aa36dfb9c89d9a7d5bf66c142bf8707a77"
-HIMO_IMPLEMENTATION_VERSION = "3.0.1"
+HIMO_IMPLEMENTATION_VERSION = "3.0.2"
 
 
 @dataclass(frozen=True)
